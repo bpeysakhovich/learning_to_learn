@@ -3,7 +3,7 @@ import numpy as np
 import task
 import matplotlib.pyplot as plt
 from parameters import par
-from convolutional_layers import apply_convulational_layers
+from convolutional_layers import apply_convolutional_layers
 import os, sys
 print('TensorFlow version ', tf.__version__)
 
@@ -82,7 +82,7 @@ class Model:
         """
         for rnn_input, target, time_mask in zip(self.input_data, self.target_data, self.time_mask):
 
-            x = apply_convulational_layers(rnn_input, par['conv_weight_fn'])
+            x = apply_convolutional_layers(rnn_input, par['conv_weight_fn'])
             x = tf.transpose(x)
 
             h, action, pol_out, val_out, mask, reward  = self.rnn_cell(x, h, self.action[-1], self.reward[-1], \
@@ -122,31 +122,17 @@ class Model:
 
         rnn_noise = tf.random_normal([par['n_hidden'], par['batch_size']], 0, par['noise_rnn'], dtype=tf.float32)
 
-        #print('x', x)
-        #print('h', h)
-        #print('W_rnn', W_rnn)
-        #print('W_in1', W_in1)
-        #print('b_rnn', b_rnn)
         h = tf.nn.relu(h*(1-par['alpha']) + par['alpha']*(tf.matmul(W_in1, x) + tf.matmul(W_rnn, h) \
             + tf.matmul(W_reward_pos, tf.nn.relu(prev_reward)) + tf.matmul(W_reward_neg, tf.nn.relu(-prev_reward)) \
             + tf.matmul(W_action, prev_action) + b_rnn + rnn_noise))
 
         pol_out = tf.matmul(W_pol_out, h) + b_pol_out
         val_out = tf.matmul(W_val_out, h) + b_val_out
-        #print('pol_out', pol_out)
         action_index = tf.multinomial(tf.transpose(pol_out), 1)
         action = tf.one_hot(tf.squeeze(action_index), par['n_pol'])
 
         reward = tf.reduce_sum(action*target, axis = 1)
 
-        #print('action_index', action_index)
-        #print('action', action)
-        #print('target', target)
-        #print('reward', reward)
-
-
-
-        #continue_trial = target_fix*action_fixate + (target_match+target_non_match)*action_fixate + (1-time_mask)
         continue_trial = tf.cast(tf.equal(prev_reward, 0.), tf.float32)
         mask *= continue_trial
 

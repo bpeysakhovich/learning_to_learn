@@ -11,7 +11,7 @@ resp = 10
 noise_sd = 0.1
 trial_length = fix + stim + delay + resp
 par['batch_size'] = 256
-par['layer_dims'] = [1000]
+par['layer_dims'] = [100]
 
 
 class Stimulus:
@@ -21,7 +21,8 @@ class Stimulus:
         # we will train the convolutional layers using the training images
         # we will use the train images fro the learning to learn experiments
         self.imagenet_dir = '/home/masse/Context-Dependent-Gating/ImageNet/'
-        self.load_imagenet_data()
+        self.cifar_dir = '/home/masse/Context-Dependent-Gating/cifar/cifar-100-python/'
+        self.load_cifar_data()
 
         # for the simple image/saccade task (task 1), select 50 pairs of images
         # TODO: find better name than task1
@@ -69,26 +70,36 @@ class Stimulus:
         self.test_labels = np.reshape(np.array(x['labels']),(-1,1))
 
 
-    def generate_cifar_tuning(self):
+    def load_cifar_data(self):
 
         """
         Load CIFAR-100 data
         """
-        x = pickle.load(open(self.cifar100_dir + 'train','rb'), encoding='bytes')
+        x = pickle.load(open(self.cifar_dir + 'train','rb'), encoding='bytes')
 
         self.train_images = np.array(x[b'data'])
         self.train_labels = np.array(np.reshape(np.array(x[b'fine_labels']),(-1,1)))
 
-        x = pickle.load(open(self.cifar100_dir + 'test','rb'), encoding='bytes')
+        x = pickle.load(open(self.cifar_dir + 'test','rb'), encoding='bytes')
 
         self.test_images  = np.array(x[b'data'])
         self.test_labels  = np.array(np.reshape(np.array(x[b'fine_labels']),(-1,1)))
 
+    def generate_image_plus_spatial_batch(self, test = False):
+
+        batch_data   = np.zeros((par['batch_size'], 32,32,3), dtype = np.float32)
+        batch_labels = np.zeros((par['batch_size'], par['layer_dims'][-1]), dtype = np.float32)
+        #spatial_location   = np.zeros((par['batch_size'], ????????), dtype = np.float32)
+
+        pass
+
 
     def generate_image_batch(self, test = False):
 
+        # test refers to drawing images from test data set, or training dataset
         # Select example indices
-        random_selection = np.random.randint(0, len(self.train_labels), par['batch_size'])
+        random_selection = np.random.randint(0, len(self.train_labels), par['batch_size']) \
+            if not test else np.random.randint(0, len(self.test_labels), par['batch_size'])
 
         # Pick out batch data and labels
         batch_data   = np.zeros((par['batch_size'], 32,32,3), dtype = np.float32)
@@ -98,10 +109,10 @@ class Stimulus:
             if test:
                 k = self.test_labels[image_index] - 1
                 batch_labels[i, k] = 1
-                batch_data[i, :] = np.float32(np.reshape(self.test_images[image_index, :],(1,32,32,3), order='F'))/255
+                batch_data[i, :, :, :] = np.float32(np.reshape(self.test_images[image_index, :],(1,32,32,3), order='F'))/255
             else:
                 k = self.train_labels[image_index] - 1
                 batch_labels[i, k] = 1
-                batch_data[i, :] = np.float32(np.reshape(self.train_images[image_index, :],(1,32,32,3), order='F'))/255
+                batch_data[i, :, :, :] = np.float32(np.reshape(self.train_images[image_index, :],(1,32,32,3), order='F'))/255
 
         return batch_data, batch_labels

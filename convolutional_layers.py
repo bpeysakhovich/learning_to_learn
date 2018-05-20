@@ -12,9 +12,9 @@ kernel_size = [3, 3]
 pool_size = [2,2]
 stride = 1
 num_layers = len(filters)
-dense_layers = [4096, 2000, 1000] # 4096 is the size after the convolutional layers
+dense_layers = [4096, 2000, 100] # 4096 is the size after the convolutional layers
 training_iterations = 40000
-image_dataset = 'imagenet' # can also select 'cifar', requires less memory
+
 
 use_gpu = True
 if use_gpu:
@@ -37,7 +37,7 @@ def train_weights_image_classification():
     target_data  = tf.placeholder(tf.float32, [par['batch_size'], dense_layers[-1]], 'target')
 
     # pass input through convolutional layers
-    x = apply_convulational_layers(input_data, None)
+    x = apply_convolutional_layers(input_data, None)
 
     # pass input through dense layers
     with tf.variable_scope('dense_layers'):
@@ -55,7 +55,7 @@ def train_weights_image_classification():
     train_op = optimizer.minimize(loss)
 
     # we will train the network on imagenet dataset
-    stim = task.Stimulus(image_dataset)
+    stim = task.Stimulus()
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
@@ -76,7 +76,7 @@ def train_weights_image_classification():
         print('Convolutional weights saved in ', par['conv_weight_fn'])
 
 
-def apply_convulational_layers(x, saved_weights_file):
+def apply_convolutional_layers(x, saved_weights_file):
 
     # load previous weights is saved_weights_file is not None,
     # otherwise, train new weights
