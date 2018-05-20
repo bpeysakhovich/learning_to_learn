@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+from parameters import par
 import pickle
 import task
 import os
@@ -12,11 +13,8 @@ pool_size = [2,2]
 stride = 1
 num_layers = len(filters)
 dense_layers = [4096, 2000, 1000] # 4096 is the size after the convolutional layers
-drop_keep_pct = 0.8
-batch_size = 256
 training_iterations = 40000
 learning_rate = 0.001
-weights_save_file = './savedir/' + 'conv_weights_test.pkl'
 image_dataset = 'imagenet'
 
 use_gpu = True
@@ -31,12 +29,11 @@ def train_weights():
     tf.reset_default_graph()
 
     # Create placeholders for the model
-    input_data   = tf.placeholder(tf.float32, [batch_size, 32, 32, 3], 'input')
-    target_data  = tf.placeholder(tf.float32, [batch_size, dense_layers[-1]], 'target')
+    input_data   = tf.placeholder(tf.float32, [par['batch_size'], 32, 32, 3], 'input')
+    target_data  = tf.placeholder(tf.float32, [par['batch_size'], dense_layers[-1]], 'target')
 
     # pass input through convolutional layers
     x = apply_convulational_layers(input_data, None)
-    x = tf.reshape(x, [batch_size, -1])
 
     # pass input through dense layers
     with tf.variable_scope('dense_layers'):
@@ -71,8 +68,8 @@ def train_weights():
         for var in tf.trainable_variables():
             W[var.op.name] = var.eval()
 
-        pickle.dump(W, open(weights_save_file,'wb'))
-        print('Convolutional weights saved in ', weights_save_file)
+        pickle.dump(W, open(par['conv_weight_fn'],'wb'))
+        print('Convolutional weights saved in ', par['conv_weight_fn'])
 
 
 def apply_convulational_layers(x, saved_weights_file):
@@ -100,6 +97,6 @@ def apply_convulational_layers(x, saved_weights_file):
         if i > 0 and i%2 == 1:
             # apply max pooling and dropout after every second layer
             x = tf.layers.max_pooling2d(inputs = x, pool_size = pool_size, strides = 2, padding='SAME')
-            x = tf.nn.dropout(x, drop_keep_pct)
+            x = tf.nn.dropout(x, par['drop_keep_pct'])
 
-    return x
+    return tf.reshape(x, [par['batch_size'], -1])
