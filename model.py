@@ -5,12 +5,10 @@ import matplotlib.pyplot as plt
 from parameters import par
 from convolutional_layers import apply_convolutional_layers
 import os, sys
-print('TensorFlow version ', tf.__version__)
-
 
 # Ignore "use compiled version of TensorFlow" errors
 os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
-
+print('TensorFlow version:\t', tf.__version__)
 print('Using EI Network:\t', par['EI'])
 print('Synaptic configuration:\t', par['synapse_config'], "\n")
 
@@ -83,9 +81,9 @@ class Model:
         for rnn_input, target, time_mask in zip(self.input_data, self.target_data, self.time_mask):
 
             x = apply_convolutional_layers(rnn_input, par['conv_weight_fn'])
-            x = tf.transpose(x)
+            self.conv_output = tf.transpose(x)
 
-            h, action, pol_out, val_out, mask, reward  = self.rnn_cell(x, h, self.action[-1], self.reward[-1], \
+            h, action, pol_out, val_out, mask, reward  = self.rnn_cell(self.conv_output, h, self.action[-1], self.reward[-1], \
                 self.mask[-1], target, time_mask)
 
             self.h.append(h)
@@ -198,11 +196,14 @@ def main(gpu_id = None):
     """
     Define all placeholder
     """
+    par['n_time_steps'] = 60 # TEMPORARAY FIX!!!!
     mask = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size']])
     x = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size'], 32, 32, 3])  # input data
     target = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size'], par['n_pol']])  # input data
-    actual_reward = tf.placeholder(tf.float32, shape=[par['n_time_steps'],par['n_val'],par['batch_size']])
-    pred_reward = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
+    #actual_reward = tf.placeholder(tf.float32, shape=[par['n_time_steps'],par['n_val'],par['batch_size']])
+    #pred_reward = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
+    actual_reward = tf.placeholder(tf.float32, shape=[par['n_time_steps'],par['batch_size']])
+    pred_reward = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size']])
     actual_action = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_pol'], par['batch_size'], ])
 
     config = tf.ConfigProto()
@@ -225,36 +226,34 @@ def main(gpu_id = None):
         for i in range(par['num_iterations']):
 
             # generate batch of batch_train_size
-            trial_info = stim.generate_trial()
-
+            input_data, reward_data, trial_mask = stim.generate_batch_task1(0)
+            print('mean input', np.mean(input_data))
             """
             Run the model
             """
-            pol_out, val_out, pol_rnn, action, stacked_mask, reward = sess.run([model.pol_out, model.val_out, model.h_pol, model.action, \
-                 model.stacked_mask,model.reward], {x: trial_info['neural_input'], target: trial_info['desired_output'], mask: trial_info['train_mask']})
+            pol_out, val_out, h, action, stacked_mask, reward, conv_out, pol_out = sess.run([model.pol_out, model.val_out, model.h, model.action, \
+                 model.stacked_mask,model.reward,model.conv_output, model.pol_out], {x: input_data, target: reward_data, mask: trial_mask})
 
             trial_reward = np.squeeze(np.stack(reward))
             trial_action = np.stack(action)
+            print('conv_out', np.mean(conv_out))
+            print('pol_out', np.mean(np.stack(pol_out)))
+            print('mean h', np.mean(np.stack(h)))
             #plt.imshow(np.squeeze(trial_reward))
             #plt.colorbar()
             #plt.show()
 
-            _, pol_loss, val_loss = sess.run([model.train_opy, model.pol_loss, model.val_loss], \
-                {x: trial_info['neural_input'], target: trial_info['desired_output'], mask: trial_info['train_mask'], \
+            _, pol_loss, val_loss = sess.run([model.train_opt, model.pol_loss, model.val_loss], \
+                {x: input_data, target: reward_data, mask: trial_mask, \
                 actual_reward: trial_reward, pred_reward: np.squeeze(val_out), actual_action:trial_action })
-
-
-            accuracy, _, _ = analysis.get_perf(trial_info['desired_output'], action, trial_info['train_mask'])
-
-            #model_performance = append_model_performance(model_performance, accuracy, val_loss, pol_loss, spike_loss, (i+1)*N)
 
             """
             Save the network model and output model performance to screen
             """
             if i%par['iters_between_outputs']==0 and i > 0:
-                print_results(i, N, pol_loss, 0., pol_rnn, accuracy)
-                r = np.squeeze(np.sum(np.stack(trial_reward),axis=0))
-                print('Mean mask' , np.mean(stacked_mask), ' val loss ', val_loss, ' reward ', np.mean(r), np.max(r))
+                print('Mean mask' , np.mean(stacked_mask), ' pol loss ', pol_loss, ' val loss ', val_loss, \
+                    ' reward ', np.mean(trial_reward), np.max(trial_reward), ' mean activity ', np.mean(np.stack(h)))
+
                 #plt.imshow(np.squeeze(stacked_mask[:,:]))
                 #plt.colorbar()
                 #plt.show()

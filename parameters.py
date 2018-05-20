@@ -57,7 +57,7 @@ par = {
     # Training specs
     'batch_size'            : 256,
     'num_iterations'        : 20000,
-    'iters_between_outputs' : 25,
+    'iters_between_outputs' : 1,
 
     # Task specs
     'trial_type'            : 'DMS', # allowable types: DMS, DMRS45, DMRS90, DMRS180, DMC, DMS+DMRS, ABBA, ABCA, dualDMS
@@ -249,12 +249,16 @@ def update_dependencies():
     par['h_init'] = 0.1*np.ones((par['n_hidden'], par['batch_size']), dtype=np.float32)
 
     # Initialize input weights
+    c = 0.1
     par['W_in0_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_input'][1], par['n_input'][0]]))
     par['W_in1_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], par['n_input'][1]]))
-    par['W_rnn_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], par['n_hidden']]))
-    par['W_reward_pos_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], 1]))
-    par['W_reward_neg_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], 1]))
-    par['W_action_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], par['n_pol']]))
+    if par['EI']:
+        par['W_rnn_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], par['n_hidden']]))
+    else:
+        par['W_rnn_init'] =  np.float32(np.random.uniform(-0.02, 0.01, size = [par['n_hidden'], par['n_hidden']]))
+    par['W_reward_pos_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], 1]))
+    par['W_reward_neg_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], 1]))
+    par['W_action_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], par['n_pol']]))
     par['W_pol_out_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_pol'], par['n_hidden']]))
     par['W_val_out_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_val'], par['n_hidden']]))
     par['b_in0_init'] = np.zeros((par['n_input'][1], 1), dtype = np.float32)
