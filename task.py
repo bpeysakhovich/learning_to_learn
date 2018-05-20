@@ -32,7 +32,7 @@ class Stimulus:
     def generate_batch_task1(self, image_pair):
 
         batch_data   = np.zeros((trial_length, par['batch_size'], 32,32,3), dtype = np.float32)
-        rewards      = np.zeros((trial_length, par['batch_size'], par['layer_dims'][-1]), dtype = np.float32)
+        rewards      = np.zeros((trial_length, par['batch_size'], par['n_pol']), dtype = np.float32)
         trial_mask   = np.ones((trial_length, par['batch_size']), dtype = np.float32)
 
         for i in range(par['batch_size']):
