@@ -14,15 +14,12 @@ stride = 1
 num_layers = len(filters)
 dense_layers = [4096, 2000, 1000] # 4096 is the size after the convolutional layers
 training_iterations = 40000
-learning_rate = 0.001
-image_dataset = 'imagenet'
+image_dataset = 'imagenet' # can also select 'cifar', requires less memory
 
 use_gpu = True
 if use_gpu:
     gpu_id = '0'
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
-
-
 
 def train_weights_image_plus_spatial_classification():
     # need to train convolutional weights to classify images
@@ -54,7 +51,7 @@ def train_weights_image_classification():
     y = tf.matmul(x, W1) + b1
 
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits = y, labels = target_data, dim = 1))
-    optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate)
+    optimizer = tf.train.AdamOptimizer(learning_rate = par['learning_rate'])
     train_op = optimizer.minimize(loss)
 
     # we will train the network on imagenet dataset
