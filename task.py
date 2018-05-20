@@ -33,21 +33,22 @@ class Stimulus:
 
         batch_data   = np.zeros((trial_length, par['batch_size'], 32,32,3), dtype = np.float32)
         rewards      = np.zeros((trial_length, par['batch_size'], par['layer_dims'][-1]), dtype = np.float32)
+        trial_mask   = np.ones((trial_length, par['batch_size']), dtype = np.float32)
 
         for i in range(par['batch_size']):
             sac_dir = np.random.choice(2)
             image_ind = self.image_list_task1[image_pair, 0] if sac_dir == 0 else self.image_list_task1[image_pair, 1]
-            batch_data[range(fix, fix+stim), i, :, :, :] = np.reshape(self.test_images[image_ind,:,:,:], (1,1,32,32,3))
+            batch_data[range(fix, fix+stim), i, ...] = np.reshape(self.test_images[image_ind,...], (1,1,32,32,3))
             # fixation
             rewards[range(0, fix+stim+delay), i,  1] = -1 # fixation break
             rewards[range(0, fix+stim+delay), i, 2] = -1 # fixation break
             # response
-            batch_labels[range(fix + stim + delay, trial_length), i, sac_dir] = 1 # reward correct response
-            batch_labels[range(fix + stim + delay, trial_length), i, 1+sac_dir%2] = -1 # penalize incorrect response
+            rewards[range(fix + stim + delay, trial_length), i, sac_dir] = 1 # reward correct response
+            rewards[range(fix + stim + delay, trial_length), i, 1+sac_dir%2] = -1 # penalize incorrect response
 
         batch_data += np.random.normal(0, noise_sd, size = batch_data.shape)
 
-        return np.maximum(0, batch_data), rewards
+        return np.maximum(0, batch_data), rewards, trial_mask
 
 
 
