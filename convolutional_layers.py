@@ -23,7 +23,14 @@ if use_gpu:
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
 
 
-def train_weights():
+
+def train_weights_image_plus_spatial_classification():
+    # need to train convolutional weights to classify images
+    # and to infer the spatial location of (colored) saccade targets
+    # saccade target locations can be inferred from 1st and/or 2nd convolutional layers
+    pass
+
+def train_weights_image_classification():
 
     # Reset TensorFlow graph
     tf.reset_default_graph()
