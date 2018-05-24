@@ -73,20 +73,7 @@ class Model:
         """
         Initialize weights and biases
         """
-        with tf.variable_scope('recurrent_pol'):
-            if par['include_ff_layer']:
-                W_in0 = tf.get_variable('W_in0', initializer = par['W_in0_init'])
-                b_in0 = tf.get_variable('b_in0', initializer = par['b_in0_init'])
-            W_in1 = tf.get_variable('W_in1', initializer = par['W_in1_init'])
-            W_rnn = tf.get_variable('W_rnn', initializer = par['W_rnn_pol_init'])
-            b_rnn = tf.get_variable('b_rnn', initializer = par['b_rnn_init'])
-            W_reward_pos = tf.get_variable('W_reward_pos', initializer = par['W_reward_pos_init'])
-            W_reward_neg = tf.get_variable('W_reward_neg', initializer = par['W_reward_neg_init'])
-            W_pol_out = tf.get_variable('W_pol_out', initializer = par['W_pol_out_init'])
-            b_pol_out = tf.get_variable('b_pol_out', initializer = par['b_pol_out_init'])
-            W_action = tf.get_variable('W_action', initializer = par['W_action_init'])
-            W_val_out = tf.get_variable('W_val_out', initializer = par['W_val_out_init'])
-            b_val_out = tf.get_variable('b_val_out', initializer = par['b_val_out_init'])
+        self.define_vars(reuse = False)
 
 
         """
@@ -115,42 +102,26 @@ class Model:
 
     def rnn_cell(self, x, h, prev_action, prev_reward, mask, target, time_mask, new_trial):
 
-        # in TF v1.8, I can use reuse = tf.AUTO_REUSE, and get rid of weight initialization above
-        with tf.variable_scope('recurrent_pol', reuse = True):
-            if par['include_ff_layer']:
-                W_in0 = tf.get_variable('W_in0')
-                b_in0 = tf.get_variable('b_in0')
-            W_in1 = tf.get_variable('W_in1')
-            W_rnn = tf.get_variable('W_rnn')
-            W_reward_pos = tf.get_variable('W_reward_pos')
-            W_reward_neg = tf.get_variable('W_reward_neg')
-            b_rnn = tf.get_variable('b_rnn')
-            W_pol_out = tf.get_variable('W_pol_out')
-            b_pol_out = tf.get_variable('b_pol_out')
-            W_action = tf.get_variable('W_action')
-            W_val_out = tf.get_variable('W_val_out')
-            b_val_out = tf.get_variable('b_val_out')
+        self.define_vars(reuse = True)
 
         # Modify the recurrent weights if using excitatory/inhibitory neurons
         if par['EI']:
-            W_rnn = tf.matmul(tf.nn.relu(W_rnn), self.W_ei)
+            self.W_rnn = tf.matmul(tf.nn.relu(self.W_rnn), self.W_ei)
 
         # pass the output of the convolutional layers through the feedforward layer(s)
         if par['include_ff_layer']:
-            x = tf.nn.relu(tf.matmul(W_in0, x) + b_in0)
+            x = tf.nn.relu(tf.matmul(self.W_in0, x) + self.b_in0)
 
-        h = tf.nn.relu(h*(1-par['alpha']) + par['alpha']*(tf.matmul(W_in1, x) + tf.matmul(W_rnn, h) \
-            + mask*(tf.matmul(W_reward_pos, tf.nn.relu(prev_reward)) + tf.matmul(W_reward_neg, tf.nn.relu(-prev_reward)) \
-            + tf.matmul(W_action, prev_action)) + b_rnn + tf.random_normal([par['n_hidden'], par['batch_size']], 0, par['noise_rnn'], dtype=tf.float32)))
+        h = self.recurrent_cell(h, x, prev_action, prev_reward, mask)
 
         # calculate the policy output and choose an action
-        pol_out = tf.matmul(W_pol_out, h) + b_pol_out
+        pol_out = tf.matmul(self.W_pol_out, h) + self.b_pol_out
         action_index = tf.multinomial(tf.transpose(pol_out), 1)
         action = tf.one_hot(tf.squeeze(action_index), par['n_pol'])
         action = tf.reshape(action, [par['batch_size'], par['n_pol']])
         pol_out = tf.nn.softmax(pol_out, dim = 0)
 
-        val_out = tf.matmul(W_val_out, h) + b_val_out
+        val_out = tf.matmul(self.W_val_out, h) + self.b_val_out
 
         # if previous reward was non-zero, then end the trial, unless the new trial signal cue is on
         continue_trial = tf.cast(tf.equal(prev_reward, 0.), tf.float32)
@@ -166,16 +137,13 @@ class Model:
     def optimize(self):
 
         epsilon = 1e-7
-        """
-        Calculate the loss functions and optimize the weights
-        """
         #Z = tf.reduce_sum(tf.stack([tf.reduce_sum(time_mask*mask) for (mask, time_mask) in zip(self.mask, self.time_mask)]))
 
         self.pol_loss = -tf.reduce_sum(tf.stack([advantage*time_mask*mask*tf.reduce_sum(act*tf.log((epsilon + pol_out)), axis = 0) \
             for (pol_out, advantage, act, mask, time_mask) in zip(self.pol_out, self.advantage, \
             self.actual_action, self.mask, self.time_mask)]))
 
-        self.entropy_loss = -tf.reduce_sum(tf.stack([time_mask*mask*pol_out*tf.log(epsilon+pol_out) \
+        self.entropy_loss = -par['entropy_cost']*tf.reduce_sum(tf.stack([time_mask*mask*pol_out*tf.log(epsilon+pol_out) \
             for (pol_out, mask, time_mask) in zip(self.pol_out, self.mask, self.time_mask)]))
 
         self.val_loss = 0.5*tf.reduce_sum(tf.stack([time_mask*mask*tf.square(val_out - actual_reward) \
@@ -189,13 +157,66 @@ class Model:
         """
         Apply any applicable weights masks to the gradient and clip
         """
-        grads_and_vars_pol = adam_opt.compute_gradients(self.pol_loss + self.val_loss + self.spike_loss - 0.1*self.entropy_loss, var_list = pol_vars)
+        grads_and_vars_pol = adam_opt.compute_gradients(self.pol_loss + self.val_loss + self.spike_loss - self.entropy_loss)
         capped_gvs = []
         for grad, var in grads_and_vars_pol:
             if var.name == "recurrent_pol/W_rnn:0":
                 grad *= par['w_rnn_mask']
             capped_gvs.append((tf.clip_by_norm(grad, 1.), var))
         self.train_opt = adam_opt.apply_gradients(capped_gvs)
+
+
+    def recurrent_cell(self, h, x, prev_action, prev_reward, mask):
+
+        if par['LSTM']:
+            pass
+        else:
+            h = tf.nn.relu(h*(1-par['alpha']) + par['alpha']*(tf.matmul(self.W_in1, x) + tf.matmul(self.W_rnn, h) \
+                + mask*(tf.matmul(self.W_reward_pos, tf.nn.relu(prev_reward)) + tf.matmul(self.W_reward_neg, tf.nn.relu(-prev_reward)) \
+                + tf.matmul(self.W_action, prev_action)) + self.b_rnn + tf.random_normal([par['n_hidden'], par['batch_size']], 0, par['noise_rnn'], dtype=tf.float32)))
+
+        return h
+
+
+    def define_vars(self, reuse):
+
+        # in TF v1.8, I can use reuse = tf.AUTO_REUSE, and get rid of first weight initialization above
+
+        if par['LSTM']:
+            pass
+        else:
+            if reuse:
+                with tf.variable_scope('recurrent_pol', reuse = True):
+                    if par['include_ff_layer']:
+                        self.W_in0 = tf.get_variable('W_in0')
+                        self.b_in0 = tf.get_variable('b_in0')
+                    self.W_in1 = tf.get_variable('W_in1')
+                    self.W_rnn = tf.get_variable('W_rnn')
+                    self.W_reward_pos = tf.get_variable('W_reward_pos')
+                    self.W_reward_neg = tf.get_variable('W_reward_neg')
+                    self.b_rnn = tf.get_variable('b_rnn')
+                    self.W_pol_out = tf.get_variable('W_pol_out')
+                    self.b_pol_out = tf.get_variable('b_pol_out')
+                    self.W_action = tf.get_variable('W_action')
+                    self.W_val_out = tf.get_variable('W_val_out')
+                    self.b_val_out = tf.get_variable('b_val_out')
+
+            else:
+                with tf.variable_scope('recurrent_pol'):
+                    if par['include_ff_layer']:
+                        self.W_in0 = tf.get_variable('W_in0', initializer = par['W_in0_init'])
+                        self.b_in0 = tf.get_variable('b_in0', initializer = par['b_in0_init'])
+                    self.W_in1 = tf.get_variable('W_in1', initializer = par['W_in1_init'])
+                    self.W_rnn = tf.get_variable('W_rnn', initializer = par['W_rnn_pol_init'])
+                    self.b_rnn = tf.get_variable('b_rnn', initializer = par['b_rnn_init'])
+                    self.W_reward_pos = tf.get_variable('W_reward_pos', initializer = par['W_reward_pos_init'])
+                    self.W_reward_neg = tf.get_variable('W_reward_neg', initializer = par['W_reward_neg_init'])
+                    self.W_pol_out = tf.get_variable('W_pol_out', initializer = par['W_pol_out_init'])
+                    self.b_pol_out = tf.get_variable('b_pol_out', initializer = par['b_pol_out_init'])
+                    self.W_action = tf.get_variable('W_action', initializer = par['W_action_init'])
+                    self.W_val_out = tf.get_variable('W_val_out', initializer = par['W_val_out_init'])
+                    self.b_val_out = tf.get_variable('b_val_out', initializer = par['b_val_out_init'])
+
 
 
 def main(gpu_id = None):
@@ -216,16 +237,9 @@ def main(gpu_id = None):
     """
     Define all placeholder
     """
-    par['n_time_steps'] = 60 # TEMPORARAY FIX!!!!
-    mask = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size']])
-    x = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size'], 32, 32, 3])  # input data
-    target = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size'], par['n_pol']])  # input data
-    actual_reward = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
-    pred_reward = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
-    actual_action = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_pol'], par['batch_size']])
-    advantage  = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
-    new_trial  = tf.placeholder(tf.float32, shape=[par['n_time_steps']])
-    h_init =  tf.placeholder(tf.float32, shape=[par['n_hidden'],par['batch_size']])
+    x, target, mask, actual_reward, pred_reward, actual_action, advantage, new_trial, h_init, mask = generate_placeholders()
+
+
 
     config = tf.ConfigProto()
     #config.gpu_options.allow_growth=True
@@ -241,50 +255,45 @@ def main(gpu_id = None):
         sess.run(init)
 
         # keep track of the model performance across training
-        model_performance = {'accuracy': [], 'loss': [], 'perf_loss': [], 'spike_loss': [], 'trial': []}
+        model_performance = {'reward': [], 'entropy_loss': [], 'val_loss': [], 'pol_loss': [], 'spike_loss': [], 'trial': []}
 
         hidden_init = np.array(par['h_init'])
 
         for i in range(par['num_iterations']):
 
-            # generate batch of batch_train_size
+            """
+            Generate stimulus and response contigencies
+            """
             input_data, reward_data, trial_mask, new_trial_signal = stim.generate_batch_task1(0)
 
             """
             Run the model
             """
-            pol_out_list, val_out_list, h, action, mask_list, reward_list = sess.run([model.pol_out, model.val_out, model.h, model.action, \
+            pol_out_list, val_out_list, h_list, action_list, mask_list, reward_list = sess.run([model.pol_out, model.val_out, model.h, model.action, \
                  model.mask, model.reward], {x: input_data, target: reward_data, mask: trial_mask, new_trial: new_trial_signal, h_init:hidden_init})
 
+            val_out, reward, adv, act, stacked_mask = stack_vars(pol_out_list, val_out_list, reward_list, action_list, mask_list, trial_mask)
 
-            pol_out = np.stack(pol_out_list)
-            val_out = np.stack(val_out_list)
-            stacked_mask = np.stack(mask_list)[:,0,:]*trial_mask
-            trial_reward = np.stack(reward_list)
-            future_reward = np.zeros_like(trial_reward)
             """
-            for j in range(par['n_time_steps'] - 1):
-                future_reward[j,:] = np.sum(trial_reward[j+1:,:],axis = 0)/np.sum(stacked_mask,axis=0,keepdims=True)
+            Calculate and apply the gradients
             """
-
-            adv = trial_reward - val_out
-            trial_action = np.stack(action)
-
             _, pol_loss, val_loss, entropy_loss = sess.run([model.train_opt, model.pol_loss, model.val_loss, model.entropy_loss], \
-                {x: input_data, target: reward_data, mask: trial_mask, actual_reward: trial_reward, pred_reward: val_out, \
-                actual_action:trial_action, advantage:adv, new_trial: new_trial_signal, h_init:hidden_init})
+                {x: input_data, target: reward_data, mask: trial_mask, actual_reward: reward, pred_reward: val_out, \
+                actual_action: act, advantage:adv, new_trial: new_trial_signal, h_init:hidden_init})
 
-            hidden_init = np.array(h[-1])
+            hidden_init = np.array(h_list[-1])
+
+            append_model_performance(model_performance, reward, entropy_loss, pol_loss, val_loss, i)
 
             """
             Save the network model and output model performance to screen
             """
             if i%par['iters_between_outputs']==0 and i > 0:
-                r = np.squeeze(np.sum(np.stack(trial_reward),axis=0))
+                r = np.squeeze(np.sum(np.stack(reward),axis=0))
                 print('Mean mask' , np.mean(stacked_mask), ' pol loss ', pol_loss, ' val loss ', val_loss, \
-                    ' entropy_loss', entropy_loss, ' reward ', np.mean(r), np.max(r), ' mean activity ', np.mean(np.stack(h)))
+                    ' entropy_loss', entropy_loss, ' reward ', np.mean(r), np.max(r))
 
-                if i%100==0 and i>0:
+                if i%10000==0 and i>0:
                     for k in range(4):
                         plt.subplot(4,2,2*k+1)
                         plt.plot(adv[:,0,k],'b')
@@ -297,15 +306,46 @@ def main(gpu_id = None):
                     plt.show()
 
 
-def append_model_performance(model_performance, accuracy, loss, perf_loss, spike_loss, trial_num):
+def stack_vars(pol_out_list, val_out_list, reward_list, action_list, mask_list, trial_mask):
 
-    model_performance['accuracy'].append(accuracy)
-    model_performance['loss'].append(loss)
-    model_performance['perf_loss'].append(perf_loss)
-    model_performance['spike_loss'].append(spike_loss)
+    pol_out = np.stack(pol_out_list)
+    val_out = np.stack(val_out_list)
+    stacked_mask = np.stack(mask_list)[:,0,:]*trial_mask
+    reward = np.stack(reward_list)
+    adv = reward - val_out
+    act = np.stack(action_list)
+    future_reward = np.zeros_like(reward)
+    """
+    for j in range(par['n_time_steps'] - 1):
+        future_reward[j,:] = np.sum(trial_reward[j+1:,:],axis = 0)/np.sum(stacked_mask,axis=0,keepdims=True)
+    """
+
+    return val_out, reward, adv, act, stacked_mask
+
+def append_model_performance(model_performance, reward, entropy_loss, pol_loss, val_loss, trial_num):
+
+    model_performance['reward'].append(reward)
+    model_performance['entropy_loss'].append(entropy_loss)
+    model_performance['pol_loss'].append(pol_loss)
+    model_performance['val_loss'].append(val_loss)
     model_performance['trial'].append(trial_num)
 
     return model_performance
+
+def generate_placeholders():
+
+    par['n_time_steps'] = 60 # TEMPORARAY FIX!!!!
+    mask = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size']])
+    x = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size'], 32, 32, 3])  # input data
+    target = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size'], par['n_pol']])  # input data
+    actual_reward = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
+    pred_reward = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
+    actual_action = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_pol'], par['batch_size']])
+    advantage  = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
+    new_trial  = tf.placeholder(tf.float32, shape=[par['n_time_steps']])
+    h_init =  tf.placeholder(tf.float32, shape=[par['n_hidden'],par['batch_size']])
+
+    return x, target, mask, actual_reward, pred_reward, actual_action, advantage, new_trial, h_init, mask
 
 def eval_weights():
 

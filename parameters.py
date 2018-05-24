@@ -18,6 +18,7 @@ par = {
     'synapse_config'        : None, # Full is 'std_stf'
     'exc_inh_prop'          : 0.8,       # Literature 0.8, for EI off 1
     'var_delay'             : False,
+    'LSTM'                  : False,
 
     # Network shape
     'n_input'               : [2048, 1000],
@@ -48,6 +49,7 @@ par = {
     # Cost parameters
     'spike_cost'            : 1e-6,
     'wiring_cost'           : 0.,
+    'entropy_cost'          : 0.1,
 
     # Synaptic plasticity specs
     'tau_fast'              : 200,
@@ -56,7 +58,7 @@ par = {
     'U_std'                 : 0.45,
 
     # Training specs
-    'batch_size'            : 8,
+    'batch_size'            : 32,
     'num_iterations'        : 20000,
     'iters_between_outputs' : 10,
     'trials_per_sequence'   : 2,
