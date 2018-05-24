@@ -279,31 +279,17 @@ def main(gpu_id = None):
             """
             _, pol_loss, val_loss, entropy_loss = sess.run([model.train_opt, model.pol_loss, model.val_loss, model.entropy_loss], \
                 {x: input_data, target: reward_data, mask: trial_mask, actual_reward: reward, pred_reward: val_out, \
-                actual_action: act, advantage:adv, new_trial: new_trial_signal, h_init:hidden_init})
+                actual_action: act, advantage:adv, new_trial: new_trial_signal, h_init: hidden_init})
 
             hidden_init = np.array(h_list[-1])
 
+            """
+            Append model results an dprint results
+            """
             append_model_performance(model_performance, reward, entropy_loss, pol_loss, val_loss, i)
-
-            """
-            Save the network model and output model performance to screen
-            """
             if i%par['iters_between_outputs']==0 and i > 0:
-                r = np.squeeze(np.sum(np.stack(reward),axis=0))
-                print('Mean mask' , np.mean(stacked_mask), ' pol loss ', pol_loss, ' val loss ', val_loss, \
-                    ' entropy_loss', entropy_loss, ' reward ', np.mean(r), np.max(r))
+                print_results(i, model_performance)
 
-                if i%10000==0 and i>0:
-                    for k in range(4):
-                        plt.subplot(4,2,2*k+1)
-                        plt.plot(adv[:,0,k],'b')
-                        plt.plot(stacked_mask[:,k],'r')
-                        plt.plot(val_out[:,0,k],'g')
-                        plt.subplot(4,2,2*k+2)
-                        plt.plot(pol_out[:,0,k],'b')
-                        plt.plot(pol_out[:,1,k],'r')
-                        plt.plot(pol_out[:,2,k],'g')
-                    plt.show()
 
 
 def stack_vars(pol_out_list, val_out_list, reward_list, action_list, mask_list, trial_mask):
@@ -324,6 +310,7 @@ def stack_vars(pol_out_list, val_out_list, reward_list, action_list, mask_list, 
 
 def append_model_performance(model_performance, reward, entropy_loss, pol_loss, val_loss, trial_num):
 
+    reward = np.mean(np.sum(reward,axis = 0))/par['trials_per_sequence']
     model_performance['reward'].append(reward)
     model_performance['entropy_loss'].append(entropy_loss)
     model_performance['pol_loss'].append(pol_loss)
@@ -368,8 +355,13 @@ def eval_weights():
 
     return weights
 
-def print_results(iter_num, trials_per_iter, perf_loss, spike_loss, state_hist, accuracy):
+def print_results(iter_num, model_performance):
 
-    print('Iter. {:4d}'.format(iter_num) + ' | Accuracy {:0.4f}'.format(accuracy) +
-      ' | Perf loss {:0.4f}'.format(perf_loss) + ' | Spike loss {:0.4f}'.format(spike_loss) +
-      ' | Mean activity {:0.4f}'.format(np.mean(state_hist)))
+    reward = np.mean(np.stack(model_performance['reward'])[-par['iters_between_outputs']:])
+    pol_loss = np.mean(np.stack(model_performance['pol_loss'])[-par['iters_between_outputs']:])
+    val_loss = np.mean(np.stack(model_performance['val_loss'])[-par['iters_between_outputs']:])
+    entropy_loss = np.mean(np.stack(model_performance['entropy_loss'])[-par['iters_between_outputs']:])
+
+    print('Iter. {:4d}'.format(iter_num) + ' | Reward {:0.4f}'.format(reward) +
+      ' | Pol loss {:0.4f}'.format(pol_loss) + ' | Val loss {:0.4f}'.format(val_loss) +
+      ' | Entropy loss {:0.4f}'.format(entropy_loss))
