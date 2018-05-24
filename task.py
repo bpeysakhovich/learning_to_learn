@@ -1,20 +1,17 @@
 import numpy as np
-from parameters import *
+from parameters import par
 import pickle
 from itertools import product
 import matplotlib.pyplot as plt
 
 # TODO: move these parameters to a better home
 ITI = 10
-fix = 20
-stim = 20
+fix = 5
+stim = 5
 delay = 0
-resp = 20
-
-noise_sd = 0.01
+resp = 10
 trial_length = ITI + fix + stim + delay + resp
-#par['batch_size'] = 256
-par['layer_dims'] = [100]
+
 
 
 class Stimulus:
@@ -34,32 +31,41 @@ class Stimulus:
 
     def generate_batch_task1(self, image_pair):
 
+        # 3 outputs: 0 = fixation, 1 = left, 2 = right
+        # reward of 0 for maintaining fixation, -1 for improperly breaking fixation
+        # reward of 1 for choosing correct action (left/right), reward of -1 otherwise
+        # trial stops when agent receives reward not equal to 0
+
         batch_data   = np.zeros((trial_length*par['trials_per_sequence'], par['batch_size'], 32,32,3), dtype = np.float32)
         rewards      = np.zeros((trial_length*par['trials_per_sequence'], par['batch_size'], par['n_pol']), dtype = np.float32)
         trial_mask   = np.ones((trial_length*par['trials_per_sequence'], par['batch_size']), dtype = np.float32)
+        new_trial   = np.zeros((trial_length*par['trials_per_sequence']), dtype = np.float32)
 
         for i, j in product(range(par['batch_size']), range(par['trials_per_sequence'])):
 
+
             start_time = j*trial_length
+            new_trial[start_time] = 1
             trial_mask[range(start_time,start_time+ITI), :] = 0
 
             sac_dir = np.random.choice(2)
-            image_ind = self.image_list_task1[image_pair, 0] if sac_dir == 0 else self.image_list_task1[image_pair, 1]
+            image_ind = self.image_list_task1[image_pair, sac_dir]
 
             batch_data[range(start_time+ITI+fix, start_time+ITI+fix+stim), i, ...] = \
                 np.float32(np.reshape(self.test_images[image_ind, :],(1,1,32,32,3), order='F'))/255
 
             # fixation
-            rewards[range(start_time+ITI, start_time+ITI+fix+stim+delay), i,  1] = -1 # fixation break
+            rewards[range(start_time+ITI, start_time+ITI+fix+stim+delay), i, 1] = -1 # fixation break
             rewards[range(start_time+ITI, start_time+ITI+fix+stim+delay), i, 2] = -1 # fixation break
             # response
-            rewards[range(start_time+ITI+fix+stim+delay, start_time+trial_length), i, sac_dir] = 1 # reward correct response
-            rewards[range(start_time+ITI+fix+stim+delay, start_time+trial_length), i, 1+sac_dir%2] = -1 # penalize incorrect response
+            rewards[range(start_time+ITI+fix+stim+delay, start_time+trial_length), i, 1+sac_dir] = 1 # reward correct response
+            rewards[range(start_time+ITI+fix+stim+delay, start_time+trial_length), i, 1+(1+sac_dir)%2] = -0.01 # penalize incorrect response
 
-        batch_data += np.random.normal(0, noise_sd, size = batch_data.shape)
 
-        return np.maximum(0, batch_data), rewards, trial_mask
+        batch_data += np.random.normal(0, par['noise_in'], size = batch_data.shape)
 
+
+        return np.maximum(0, batch_data), rewards, trial_mask, new_trial
 
 
     def load_imagenet_data(self):
@@ -112,9 +118,11 @@ class Stimulus:
         random_selection = np.random.randint(0, len(self.train_labels), par['batch_size']) \
             if not test else np.random.randint(0, len(self.test_labels), par['batch_size'])
 
+        num_unique_labels = len(np.unique(self.train_labels))
+
         # Pick out batch data and labels
         batch_data   = np.zeros((par['batch_size'], 32,32,3), dtype = np.float32)
-        batch_labels = np.zeros((par['batch_size'], par['layer_dims'][-1]), dtype = np.float32)
+        batch_labels = np.zeros((par['batch_size'], num_unique_labels), dtype = np.float32)
 
         for i, image_index in enumerate(random_selection):
             if test:

@@ -7,13 +7,13 @@ import os
 
 
 # TODO: move these parameters to a better home
-filters = [32,32,64,64]
+filters = [16,16,32,32]
 kernel_size = [3, 3]
 pool_size = [2,2]
 stride = 1
 num_layers = len(filters)
-dense_layers = [4096, 2000, 100] # 4096 is the size after the convolutional layers
-training_iterations = 40000
+dense_layers = [2048, 1000, 100] # 4096 is the size after the convolutional layers
+training_iterations = 20000
 
 
 use_gpu = True
@@ -38,6 +38,7 @@ def train_weights_image_classification():
 
     # pass input through convolutional layers
     x = apply_convolutional_layers(input_data, None)
+    print('x', x)
 
     # pass input through dense layers
     with tf.variable_scope('dense_layers'):
@@ -98,9 +99,11 @@ def apply_convolutional_layers(x, saved_weights_file):
         x = tf.layers.conv2d(inputs = x, filters = filters[i], kernel_size = kernel_size, kernel_initializer = kernel_init[i],  \
             bias_initializer = bias_init[i], strides = stride, activation = tf.nn.relu, padding = 'SAME', trainable = train)
 
+
         if i > 0 and i%2 == 1:
             # apply max pooling and dropout after every second layer
             x = tf.layers.max_pooling2d(inputs = x, pool_size = pool_size, strides = 2, padding='SAME')
             x = tf.nn.dropout(x, par['drop_keep_pct'])
+
 
     return tf.reshape(x, [par['batch_size'], -1])

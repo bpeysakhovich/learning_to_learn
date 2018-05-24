@@ -16,17 +16,18 @@ par = {
 
     # Network configuration
     'synapse_config'        : None, # Full is 'std_stf'
-    'exc_inh_prop'          : 1.,       # Literature 0.8, for EI off 1
+    'exc_inh_prop'          : 0.8,       # Literature 0.8, for EI off 1
     'var_delay'             : False,
 
     # Network shape
-    'n_input'               : [4096, 1000],
+    'n_input'               : [2048, 1000],
     'n_hidden'              : 100,
     'n_pol'                 : 3,
     'n_val'                 : 1,
+    'include_ff_layer'      : False,
 
     # Timings and rates
-    'dt'                    : 10,
+    'dt'                    : 20,
     'learning_rate'         : 1e-3,
     'membrane_time_constant': 100,
     'connection_prob'       : 1,         # Usually 1
@@ -35,8 +36,8 @@ par = {
     # Variance values
     'clip_max_grad_val'     : 1,
     'input_mean'            : 0.0,
-    'noise_in_sd'           : 0.0002,
-    'noise_rnn_sd'          : 0.0002,
+    'noise_in_sd'           : 0.05,
+    'noise_rnn_sd'          : 0.05,
     'drop_keep_pct'         : 0.8,
 
     # Tuning function data
@@ -45,7 +46,7 @@ par = {
     'kappa'                 : 2,        # concentration scaling factor for von Mises
 
     # Cost parameters
-    'spike_cost'            : 1e-7,
+    'spike_cost'            : 1e-6,
     'wiring_cost'           : 0.,
 
     # Synaptic plasticity specs
@@ -55,9 +56,10 @@ par = {
     'U_std'                 : 0.45,
 
     # Training specs
-    'batch_size'            : 256,
+    'batch_size'            : 8,
     'num_iterations'        : 20000,
-    'iters_between_outputs' : 1,
+    'iters_between_outputs' : 10,
+    'trials_per_sequence'   : 2,
 
     # Task specs
     'trial_type'            : 'DMS', # allowable types: DMS, DMRS45, DMRS90, DMRS180, DMC, DMS+DMRS, ABBA, ABCA, dualDMS
@@ -249,35 +251,42 @@ def update_dependencies():
     par['h_init'] = 0.1*np.ones((par['n_hidden'], par['batch_size']), dtype=np.float32)
 
     # Initialize input weights
-    c = 0.1
-    par['W_in0_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_input'][1], par['n_input'][0]]))
-    par['W_in1_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], par['n_input'][1]]))
-    if par['EI']:
-        par['W_rnn_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], par['n_hidden']]))
+    c = 0.02
+    if par['include_ff_layer']:
+        par['W_in0_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_input'][1], par['n_input'][0]]))
+        par['b_in0_init'] = np.zeros((par['n_input'][1], 1), dtype = np.float32)
+        par['W_in1_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], par['n_input'][1]]))
+
     else:
-        par['W_rnn_init'] =  np.float32(np.random.uniform(-0.02, 0.01, size = [par['n_hidden'], par['n_hidden']]))
+        #par['W_in1_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], par['n_input'][0]]))
+        par['W_in1_init'] =  c*np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_input'][0]]))
+
+    if par['EI']:
+        par['W_rnn_pol_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], par['n_hidden']]))
+        par['W_rnn_val_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], par['n_hidden']]))
+        par['w_rnn_mask'] = np.ones((par['n_hidden'], par['n_hidden']), dtype=np.float32) - np.eye(par['n_hidden'])
+        par['W_rnn_pol_init'] *= par['w_rnn_mask']
+        par['W_rnn_val_init'] *= par['w_rnn_mask']
+    else:
+        par['W_rnn_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+        par['w_rnn_mask'] = np.ones((par['n_hidden'], par['n_hidden']), dtype=np.float32)
+
+    """
     par['W_reward_pos_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], 1]))
     par['W_reward_neg_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], 1]))
     par['W_action_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], par['n_pol']]))
     par['W_pol_out_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_pol'], par['n_hidden']]))
     par['W_val_out_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_val'], par['n_hidden']]))
-    par['b_in0_init'] = np.zeros((par['n_input'][1], 1), dtype = np.float32)
+    """
+    par['W_reward_pos_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
+    par['W_reward_neg_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
+    par['W_action_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_pol']]))
+    par['W_pol_out_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_pol'], par['n_hidden']]))
+    par['W_val_out_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_val'], par['n_hidden']]))
+
     par['b_rnn_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
     par['b_pol_out_init'] = np.zeros((par['n_pol'], 1), dtype = np.float32)
     par['b_val_out_init'] = np.zeros((par['n_val'], 1), dtype = np.float32)
-
-
-
-
-    # Initialize starting recurrent weights
-    # If excitatory/inhibitory neurons desired, initializes with random matrix with
-    #   zeroes on the diagonal
-    # If not, initializes with a diagonal matrix
-    if par['EI']:
-        par['w_rnn_mask'] = np.ones((par['n_hidden'], par['n_hidden']), dtype=np.float32) - np.eye(par['n_hidden'])
-    else:
-        par['w_rnn_mask'] = np.ones((par['n_hidden'], par['n_hidden']), dtype=np.float32)
-
 
 
     """
