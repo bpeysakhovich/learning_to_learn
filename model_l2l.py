@@ -188,7 +188,6 @@ class Model:
                     self.W_in0 = tf.get_variable('W_in0')
                     self.b_in0 = tf.get_variable('b_in0')
                 self.W_in1 = tf.get_variable('W_in1')
-
                 self.W_reward_pos = tf.get_variable('W_reward_pos')
                 self.W_reward_neg = tf.get_variable('W_reward_neg')
                 self.b_rnn = tf.get_variable('b_rnn')
@@ -198,19 +197,19 @@ class Model:
                 self.W_val_out = tf.get_variable('W_val_out')
                 self.b_val_out = tf.get_variable('b_val_out')
         else:
-            if par['include_ff_layer']:
-                self.W_in0 = tf.get_variable('W_in0', initializer = par['W_in0_init'])
-                self.b_in0 = tf.get_variable('b_in0', initializer = par['b_in0_init'])
-            self.W_in1 = tf.get_variable('W_in1', initializer = par['W_in1_init'])
-
-            self.b_rnn = tf.get_variable('b_rnn', initializer = par['b_rnn_init'])
-            self.W_reward_pos = tf.get_variable('W_reward_pos', initializer = par['W_reward_pos_init'])
-            self.W_reward_neg = tf.get_variable('W_reward_neg', initializer = par['W_reward_neg_init'])
-            self.W_pol_out = tf.get_variable('W_pol_out', initializer = par['W_pol_out_init'])
-            self.b_pol_out = tf.get_variable('b_pol_out', initializer = par['b_pol_out_init'])
-            self.W_action = tf.get_variable('W_action', initializer = par['W_action_init'])
-            self.W_val_out = tf.get_variable('W_val_out', initializer = par['W_val_out_init'])
-            self.b_val_out = tf.get_variable('b_val_out', initializer = par['b_val_out_init'])
+            with tf.variable_scope('recurrent_pol'):
+                if par['include_ff_layer']:
+                    self.W_in0 = tf.get_variable('W_in0', initializer = par['W_in0_init'])
+                    self.b_in0 = tf.get_variable('b_in0', initializer = par['b_in0_init'])
+                self.W_in1 = tf.get_variable('W_in1', initializer = par['W_in1_init'])
+                self.b_rnn = tf.get_variable('b_rnn', initializer = par['b_rnn_init'])
+                self.W_reward_pos = tf.get_variable('W_reward_pos', initializer = par['W_reward_pos_init'])
+                self.W_reward_neg = tf.get_variable('W_reward_neg', initializer = par['W_reward_neg_init'])
+                self.W_pol_out = tf.get_variable('W_pol_out', initializer = par['W_pol_out_init'])
+                self.b_pol_out = tf.get_variable('b_pol_out', initializer = par['b_pol_out_init'])
+                self.W_action = tf.get_variable('W_action', initializer = par['W_action_init'])
+                self.W_val_out = tf.get_variable('W_val_out', initializer = par['W_val_out_init'])
+                self.b_val_out = tf.get_variable('b_val_out', initializer = par['b_val_out_init'])
 
         if par['LSTM']:
             # following conventions on https://en.wikipedia.org/wiki/Long_short-term_memory
@@ -236,9 +235,11 @@ class Model:
                 self.Wo = tf.get_variable('bo', initializer = par['bo_init'])
         else:
             if reuse:
-                self.W_rnn = tf.get_variable('W_rnn')
+                with tf.variable_scope('recurrent_pol', reuse = True):
+                    self.W_rnn = tf.get_variable('W_rnn')
             else:
-                self.W_rnn = tf.get_variable('W_rnn', initializer = par['W_rnn_pol_init'])
+                with tf.variable_scope('recurrent_pol'):
+                    self.W_rnn = tf.get_variable('W_rnn', initializer = par['W_rnn_pol_init'])
 
 
 def main(gpu_id = None):
