@@ -58,9 +58,9 @@ par = {
     'U_std'                 : 0.45,
 
     # Training specs
-    'batch_size'            : 32,
+    'batch_size'            : 1,
     'num_iterations'        : 20000,
-    'iters_between_outputs' : 10,
+    'iters_between_outputs' : 100,
     'trials_per_sequence'   : 2,
 
     # Task specs
@@ -273,13 +273,7 @@ def update_dependencies():
         par['W_rnn_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
         par['w_rnn_mask'] = np.ones((par['n_hidden'], par['n_hidden']), dtype=np.float32)
 
-    """
-    par['W_reward_pos_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], 1]))
-    par['W_reward_neg_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], 1]))
-    par['W_action_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_hidden'], par['n_pol']]))
-    par['W_pol_out_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_pol'], par['n_hidden']]))
-    par['W_val_out_init'] =  np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_val'], par['n_hidden']]))
-    """
+
     par['W_reward_pos_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
     par['W_reward_neg_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
     par['W_action_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_pol']]))
@@ -289,6 +283,19 @@ def update_dependencies():
     par['b_rnn_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
     par['b_pol_out_init'] = np.zeros((par['n_pol'], 1), dtype = np.float32)
     par['b_val_out_init'] = np.zeros((par['n_val'], 1), dtype = np.float32)
+
+    if par['LSTM']:
+        par['Wf_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+        par['Wi_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+        par['Wo_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+        par['Uf_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+        par['Uf_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+        par['Uf_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+        par['bf_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
+        par['bi_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
+        par['bo_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
+
+
 
 
     """
