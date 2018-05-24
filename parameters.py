@@ -32,6 +32,7 @@ par = {
     'learning_rate'         : 1e-3,
     'membrane_time_constant': 100,
     'connection_prob'       : 1,         # Usually 1
+    'discount_rate'         : 0.95,
 
 
     # Variance values
@@ -59,7 +60,7 @@ par = {
 
     # Training specs
     'batch_size'            : 1,
-    'num_iterations'        : 20000,
+    'num_iterations'        : 100000,
     'iters_between_outputs' : 100,
     'trials_per_sequence'   : 2,
 

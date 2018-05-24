@@ -17,14 +17,13 @@ Model setup and execution
 """
 class Model:
 
-    def __init__(self, input_data, target_data, actual_reward, pred_reward, actual_action, advantage, mask, new_trial, h_init):
+    def __init__(self, input_data, target_data, pred_val, actual_action, advantage, mask, new_trial, h_init):
 
         # Load the input activity, the target data, and the training mask for this batch of trials
         self.input_data = tf.unstack(input_data, axis=0)
         self.target_data = tf.unstack(target_data, axis=0)
-        self.pred_reward = tf.unstack(pred_reward, axis=0)
+        self.pred_val = tf.unstack(pred_val, axis=0)
         self.actual_action = tf.unstack(actual_action, axis=0)
-        self.actual_reward = tf.unstack(actual_reward, axis=0)
         self.advantage = tf.unstack(advantage, axis=0)
         self.new_trial = tf.unstack(new_trial)
         self.W_ei = tf.constant(par['EI_matrix'])
@@ -146,8 +145,8 @@ class Model:
         self.entropy_loss = -par['entropy_cost']*tf.reduce_sum(tf.stack([time_mask*mask*pol_out*tf.log(epsilon+pol_out) \
             for (pol_out, mask, time_mask) in zip(self.pol_out, self.mask, self.time_mask)]))
 
-        self.val_loss = 0.5*tf.reduce_sum(tf.stack([time_mask*mask*tf.square(val_out - actual_reward) \
-                for (val_out, mask, time_mask, actual_reward) in zip(self.val_out, self.mask, self.time_mask, self.actual_reward)]))
+        self.val_loss = 0.5*tf.reduce_sum(tf.stack([time_mask*mask*tf.square(val_out - pred_val) \
+                for (val_out, mask, time_mask, pred_val) in zip(self.val_out[:-1], self.mask, self.time_mask, self.pred_val[1:])]))
 
         # L2 penalty term on hidden state activity to encourage low spike rate solutions
         self.spike_loss = tf.reduce_mean(tf.stack([par['spike_cost']*tf.reduce_mean(tf.square(h), axis=0) for h in self.h]))
@@ -162,7 +161,7 @@ class Model:
         for grad, var in grads_and_vars_pol:
             if var.name == "recurrent_pol/W_rnn:0":
                 grad *= par['w_rnn_mask']
-            capped_gvs.append((tf.clip_by_norm(grad, 1.), var))
+            capped_gvs.append((tf.clip_by_norm(grad, par['clip_max_grad_val']), var))
         self.train_opt = adam_opt.apply_gradients(capped_gvs)
 
 
@@ -260,22 +259,18 @@ def main(gpu_id = None):
     """
     Define all placeholder
     """
-    x, target, mask, actual_reward, pred_reward, actual_action, advantage, new_trial, h_init, mask = generate_placeholders()
-
-
+    x, target, mask, pred_val, actual_action, advantage, new_trial, h_init, mask = generate_placeholders()
 
     config = tf.ConfigProto()
     #config.gpu_options.allow_growth=True
 
-    with tf.Session(config=config) as sess:
+    with tf.Session(config = config) as sess:
 
-        if gpu_id is not None:
-            model = Model(x, target, actual_reward, pred_reward, actual_action, advantage, mask, new_trial, h_init)
-        else:
-            with tf.device("/gpu:0"):
-                model = Model(x, target, actual_reward, pred_reward, actual_action, advantage, mask, new_trial, h_init)
-        init = tf.global_variables_initializer()
-        sess.run(init)
+        device = '/cpu:0' if gpu_id is None else '/gpu:0'
+        with tf.device(device):
+            model = Model(x, target, pred_val, actual_action, advantage, mask, new_trial, h_init)
+
+        sess.run(tf.global_variables_initializer())
 
         # keep track of the model performance across training
         model_performance = {'reward': [], 'entropy_loss': [], 'val_loss': [], 'pol_loss': [], 'spike_loss': [], 'trial': []}
@@ -295,13 +290,16 @@ def main(gpu_id = None):
             pol_out_list, val_out_list, h_list, action_list, mask_list, reward_list = sess.run([model.pol_out, model.val_out, model.h, model.action, \
                  model.mask, model.reward], {x: input_data, target: reward_data, mask: trial_mask, new_trial: new_trial_signal, h_init:hidden_init})
 
-            val_out, reward, adv, act, stacked_mask = stack_vars(pol_out_list, val_out_list, reward_list, action_list, mask_list, trial_mask)
+            """
+            Unpack all lists, calculate predicted value and advantage functions
+            """
+            val_out, reward, adv, act, prediected_val, stacked_mask = stack_vars(pol_out_list, val_out_list, reward_list, action_list, mask_list, trial_mask)
 
             """
             Calculate and apply the gradients
             """
             _, pol_loss, val_loss, entropy_loss = sess.run([model.train_opt, model.pol_loss, model.val_loss, model.entropy_loss], \
-                {x: input_data, target: reward_data, mask: trial_mask, actual_reward: reward, pred_reward: val_out, \
+                {x: input_data, target: reward_data, mask: trial_mask, pred_val: prediected_val, \
                 actual_action: act, advantage:adv, new_trial: new_trial_signal, h_init: hidden_init})
 
             hidden_init = np.array(h_list[-1])
@@ -317,19 +315,18 @@ def main(gpu_id = None):
 
 def stack_vars(pol_out_list, val_out_list, reward_list, action_list, mask_list, trial_mask):
 
+
     pol_out = np.stack(pol_out_list)
     val_out = np.stack(val_out_list)
     stacked_mask = np.stack(mask_list)[:,0,:]*trial_mask
     reward = np.stack(reward_list)
-    adv = reward - val_out
+    val_out_stacked = np.vstack((np.zeros((1,par['n_val'],par['batch_size'])), val_out))
+    pred_val = reward + par['discount_rate']*val_out_stacked[1:,:,:]
+    adv = pred_val - val_out_stacked[:-1,:,:]
+    #adv = reward - val_out
     act = np.stack(action_list)
-    future_reward = np.zeros_like(reward)
-    """
-    for j in range(par['n_time_steps'] - 1):
-        future_reward[j,:] = np.sum(trial_reward[j+1:,:],axis = 0)/np.sum(stacked_mask,axis=0,keepdims=True)
-    """
 
-    return val_out, reward, adv, act, stacked_mask
+    return val_out, reward, adv, act, pred_val, stacked_mask
 
 def append_model_performance(model_performance, reward, entropy_loss, pol_loss, val_loss, trial_num):
 
@@ -348,17 +345,17 @@ def generate_placeholders():
     mask = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size']])
     x = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size'], 32, 32, 3])  # input data
     target = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size'], par['n_pol']])  # input data
-    actual_reward = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
-    pred_reward = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
+    pred_val = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
     actual_action = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_pol'], par['batch_size']])
     advantage  = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
     new_trial  = tf.placeholder(tf.float32, shape=[par['n_time_steps']])
     h_init =  tf.placeholder(tf.float32, shape=[par['n_hidden'],par['batch_size']])
 
-    return x, target, mask, actual_reward, pred_reward, actual_action, advantage, new_trial, h_init, mask
+    return x, target, mask, pred_val, actual_action, advantage, new_trial, h_init, mask
 
 def eval_weights():
 
+    # TODO: NEEDS FIXING!
     with tf.variable_scope('rnn_cell', reuse=True):
         W_in = tf.get_variable('W_in')
         W_rnn = tf.get_variable('W_rnn')
