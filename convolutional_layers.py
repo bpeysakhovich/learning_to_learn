@@ -7,11 +7,7 @@ import os
 
 
 # TODO: move these parameters to a better home
-filters = [16,16,32,32]
-kernel_size = [3, 3]
-pool_size = [2,2]
-stride = 1
-num_layers = len(filters)
+num_layers = len(par['conv_filters'])
 dense_layers = [2048, 1000, 100] # 4096 is the size after the convolutional layers
 training_iterations = 20000
 
@@ -96,13 +92,13 @@ def apply_convolutional_layers(x, saved_weights_file):
 
     for i in range(num_layers):
 
-        x = tf.layers.conv2d(inputs = x, filters = filters[i], kernel_size = kernel_size, kernel_initializer = kernel_init[i],  \
-            bias_initializer = bias_init[i], strides = stride, activation = tf.nn.relu, padding = 'SAME', trainable = train)
+        x = tf.layers.conv2d(inputs = x, filters = par['conv_filters'][i], kernel_size = par['kernel_size'], kernel_initializer = kernel_init[i],  \
+            bias_initializer = bias_init[i], strides = par['stride'], activation = tf.nn.relu, padding = 'SAME', trainable = train)
 
 
         if i > 0 and i%2 == 1:
             # apply max pooling and dropout after every second layer
-            x = tf.layers.max_pooling2d(inputs = x, pool_size = pool_size, strides = 2, padding='SAME')
+            x = tf.layers.max_pooling2d(inputs = x, pool_size = par['pool_size'], strides = 2, padding='SAME')
             x = tf.nn.dropout(x, par['drop_keep_pct'])
 
 

@@ -63,6 +63,12 @@ par = {
     # Task specs
     'trial_type'            : 'task1', # allowable types: DMS, DMRS45, DMRS90, DMRS180, DMC, DMS+DMRS, ABBA, ABCA, dualDMS
 
+    # Parameters for convolutional layer
+    'conv_filters'          : [16,16,32,32],
+    'kernel_size'           : [3, 3],
+    'pool_size'             : [2,2],
+    'strides'               : 1,
+
 }
 
 
