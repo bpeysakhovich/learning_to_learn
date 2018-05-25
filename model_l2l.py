@@ -38,16 +38,7 @@ class Model:
 
         # Train the model
         self.optimize()
-    """
 
-    def convolutional_layers()
-
-    for rnn_input self.input_data:
-
-        x = apply_convolutional_layers(rnn_input, par['conv_weight_fn'])
-        self.conv_output = tf.transpose(x)
-
-    """
 
     def rnn_cell_loop(self, h):
 
@@ -56,8 +47,8 @@ class Model:
         self.h = [] # RNN activity
         self.pol_out = [] # policy output
         self.val_out = [] # value output
-        self.syn_x = [] # STP available neurotransmitter
-        self.syn_u = [] # STP calcium concentration
+        self.syn_x = [] # STP available neurotransmitter, currently not in use
+        self.syn_u = [] # STP calcium concentration, currently not in use
 
         # we will add the first element to these lists since we need to input the previous action and reward
         # into the RNN
@@ -118,7 +109,7 @@ class Model:
         action_index = tf.multinomial(tf.transpose(pol_out), 1)
         action = tf.one_hot(tf.squeeze(action_index), par['n_pol'])
         action = tf.reshape(action, [par['batch_size'], par['n_pol']])
-        pol_out = tf.nn.softmax(pol_out, dim = 0)
+        pol_out = tf.nn.softmax(pol_out, dim = 0) # needed for optimize
 
         val_out = tf.matmul(self.W_val_out, h) + self.b_val_out
 
@@ -147,7 +138,7 @@ class Model:
             for (pol_out, mask, time_mask) in zip(self.pol_out, self.mask, self.time_mask)]))
 
         self.val_loss = 0.5*tf.reduce_sum(tf.stack([time_mask*mask*tf.square(val_out - pred_val) \
-                for (val_out, mask, time_mask, pred_val) in zip(self.val_out[:-1], self.mask, self.time_mask, self.pred_val[1:])]))
+            for (val_out, mask, time_mask, pred_val) in zip(self.val_out[:-1], self.mask, self.time_mask, self.pred_val[1:])]))
 
         # L2 penalty term on hidden state activity to encourage low spike rate solutions
         self.spike_loss = tf.reduce_mean(tf.stack([par['spike_cost']*tf.reduce_mean(tf.square(h), axis=0) for h in self.h]))
@@ -161,13 +152,14 @@ class Model:
         update_gradients = []
         reset_gradients = []
         for var in var_list:
-            self.cummulative_grads[var.op.name] = tf.Variable(tf.zeros(var.get_shape()), trainable=False)
+            self.cummulative_grads[var.op.name] = tf.Variable(tf.zeros(var.get_shape()), trainable = False)
         grads_and_vars = adam_opt.compute_gradients(self.pol_loss + self.val_loss + self.spike_loss - self.entropy_loss)
         for grad, var in grads_and_vars:
-            if var.name == "recurrent_pol/W_rnn:0":
-                grad *= par['w_rnn_mask']
+            #grad = tf.clip_by_norm(grad, par['clip_max_grad_val'])
             update_gradients.append(tf.assign_add(self.cummulative_grads[var.op.name], grad))
             reset_gradients.append(tf.assign(self.cummulative_grads[var.op.name], 0.*self.cummulative_grads[var.op.name]))
+
+        #with tf.control_dependencies([update_gradients]):
         self.update_gradients = tf.group(*update_gradients)
         self.reset_gradients = tf.group(*reset_gradients)
 
@@ -176,6 +168,9 @@ class Model:
         """
         capped_gvs = []
         for var in var_list:
+            #capped_gvs.append((self.cummulative_grads[var.op.name], var))
+            if var.name == "recurrent_pol/W_rnn:0":
+                self.cummulative_grads[var.op.name] *= par['w_rnn_mask']
             capped_gvs.append((tf.clip_by_norm(self.cummulative_grads[var.op.name], par['clip_max_grad_val']), var))
         self.train_opt = adam_opt.apply_gradients(capped_gvs)
 
@@ -195,6 +190,13 @@ class Model:
     def define_vars(self, reuse):
 
         # in TF v1.8, I can use reuse = tf.AUTO_REUSE, and get rid of first weight initialization above
+
+        # W_in0, and W_in1 are feedforward weights whose input is the convolved image, and projects onto the RNN
+        # W_reward_pos, W_reward_neg project the postive and negative part of the reward from the previous time point onto the RNN
+        # W_action projects the action from the previous time point onto the RNN
+        # Wnn projects the activity of the RNN from the previous time point back onto the RNN (i.e. the recurrent weights)
+        # W_pol_out projects from the RNN onto the policy output neurons
+        # W_val_out projects from the RNN onto the value output neuron
 
         if reuse:
             with tf.variable_scope('recurrent_pol', reuse = True):
@@ -318,9 +320,17 @@ def main(gpu_id = None):
                 actual_action: act, advantage:adv, new_trial: new_trial_signal, h_init: hidden_init})
 
             """
+            cg = sess.run([model.cummulative_grads])
+            c = 0
+            for k,v in cg[0].items():
+                c+=np.sum(v**2)
+            print(i,c)
+            """
+
+            """
             Apply the accumulated gradients and reset
             """
-            if i>0 and i%100==0:
+            if i>0 and i%par['trials_per_grad_update'] == 0:
                 sess.run([model.train_opt])
                 sess.run([model.reset_gradients])
 
@@ -343,7 +353,8 @@ def stack_vars(pol_out_list, val_out_list, reward_list, action_list, mask_list, 
     stacked_mask = np.stack(mask_list)[:,0,:]*trial_mask
     reward = np.stack(reward_list)
     val_out_stacked = np.vstack((np.zeros((1,par['n_val'],par['batch_size'])), val_out))
-    pred_val = reward + par['discount_rate']*val_out_stacked[1:,:,:]
+    terminal_state = np.float32(reward != 0) # this assumes that the trial ends when a reward other than zero is received
+    pred_val = reward + par['discount_rate']*val_out_stacked[1:,:,:]*(1-terminal_state)
     adv = pred_val - val_out_stacked[:-1,:,:]
     #adv = reward - val_out
     act = np.stack(action_list)
@@ -363,14 +374,13 @@ def append_model_performance(model_performance, reward, entropy_loss, pol_loss, 
 
 def generate_placeholders():
 
-    par['n_time_steps'] = 60 # TEMPORARAY FIX!!!!
-    mask = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size']])
-    x = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size'], 32, 32, 3])  # input data
-    target = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['batch_size'], par['n_pol']])  # input data
-    pred_val = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
-    actual_action = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_pol'], par['batch_size']])
-    advantage  = tf.placeholder(tf.float32, shape=[par['n_time_steps'], par['n_val'], par['batch_size']])
-    new_trial  = tf.placeholder(tf.float32, shape=[par['n_time_steps']])
+    mask = tf.placeholder(tf.float32, shape=[par['sequence_time_steps'], par['batch_size']])
+    x = tf.placeholder(tf.float32, shape=[par['sequence_time_steps'], par['batch_size'], 32, 32, 3])  # input data
+    target = tf.placeholder(tf.float32, shape=[par['sequence_time_steps'], par['batch_size'], par['n_pol']])  # input data
+    pred_val = tf.placeholder(tf.float32, shape=[par['sequence_time_steps'], par['n_val'], par['batch_size']])
+    actual_action = tf.placeholder(tf.float32, shape=[par['sequence_time_steps'], par['n_pol'], par['batch_size']])
+    advantage  = tf.placeholder(tf.float32, shape=[par['sequence_time_steps'], par['n_val'], par['batch_size']])
+    new_trial  = tf.placeholder(tf.float32, shape=[par['sequence_time_steps']])
     h_init =  tf.placeholder(tf.float32, shape=[par['n_hidden'],par['batch_size']])
 
     return x, target, mask, pred_val, actual_action, advantage, new_trial, h_init, mask

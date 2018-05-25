@@ -4,16 +4,6 @@ import pickle
 from itertools import product
 import matplotlib.pyplot as plt
 
-# TODO: move these parameters to a better home
-ITI = 10
-fix = 5
-stim = 5
-delay = 0
-resp = 10
-trial_length = ITI + fix + stim + delay + resp
-
-
-
 class Stimulus:
 
     def __init__(self):
@@ -36,15 +26,21 @@ class Stimulus:
         # reward of 1 for choosing correct action (left/right), reward of -1 otherwise
         # trial stops when agent receives reward not equal to 0
 
-        batch_data   = np.zeros((trial_length*par['trials_per_sequence'], par['batch_size'], 32,32,3), dtype = np.float32)
-        rewards      = np.zeros((trial_length*par['trials_per_sequence'], par['batch_size'], par['n_pol']), dtype = np.float32)
-        trial_mask   = np.ones((trial_length*par['trials_per_sequence'], par['batch_size']), dtype = np.float32)
-        new_trial   = np.zeros((trial_length*par['trials_per_sequence']), dtype = np.float32)
+        batch_data   = np.zeros((par['n_time_steps']*par['trials_per_sequence'], par['batch_size'], 32,32,3), dtype = np.float32)
+        rewards      = np.zeros((par['n_time_steps']*par['trials_per_sequence'], par['batch_size'], par['n_pol']), dtype = np.float32)
+        trial_mask   = np.ones((par['n_time_steps']*par['trials_per_sequence'], par['batch_size']), dtype = np.float32)
+        new_trial   = np.zeros((par['n_time_steps']*par['trials_per_sequence']), dtype = np.float32)
+
+        ITI = par['ITI']//par['dt']
+        fix = par['fix']//par['dt']
+        stim = par['stim']//par['dt']
+        delay = par['delay']//par['dt']
+        resp = par['resp']//par['dt']
 
         for i, j in product(range(par['batch_size']), range(par['trials_per_sequence'])):
 
 
-            start_time = j*trial_length
+            start_time = j*par['n_time_steps']
             new_trial[start_time] = 1
             trial_mask[range(start_time,start_time+ITI), :] = 0
 
@@ -58,12 +54,10 @@ class Stimulus:
             rewards[range(start_time+ITI, start_time+ITI+fix+stim+delay), i, 1] = -1 # fixation break
             rewards[range(start_time+ITI, start_time+ITI+fix+stim+delay), i, 2] = -1 # fixation break
             # response
-            rewards[range(start_time+ITI+fix+stim+delay, start_time+trial_length), i, 1+sac_dir] = 1 # reward correct response
-            rewards[range(start_time+ITI+fix+stim+delay, start_time+trial_length), i, 1+(1+sac_dir)%2] = -0.01 # penalize incorrect response
-
+            rewards[range(start_time+ITI+fix+stim+delay, start_time+par['n_time_steps']), i, 1+sac_dir] = 1 # reward correct response
+            rewards[range(start_time+ITI+fix+stim+delay, start_time+par['n_time_steps']), i, 1+(1+sac_dir)%2] = -0.01 # penalize incorrect response
 
         batch_data += np.random.normal(0, par['noise_in'], size = batch_data.shape)
-
 
         return np.maximum(0, batch_data), rewards, trial_mask, new_trial
 

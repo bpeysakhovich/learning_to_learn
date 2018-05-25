@@ -29,23 +29,18 @@ par = {
 
     # Timings and rates
     'dt'                    : 20,
-    'learning_rate'         : 1e-3,
+    'learning_rate'         : 5e-4,
     'membrane_time_constant': 100,
     'connection_prob'       : 1,         # Usually 1
     'discount_rate'         : 0.95,
 
 
     # Variance values
-    'clip_max_grad_val'     : 1,
+    'clip_max_grad_val'     : 20,
     'input_mean'            : 0.0,
     'noise_in_sd'           : 0.05,
     'noise_rnn_sd'          : 0.05,
     'drop_keep_pct'         : 0.8,
-
-    # Tuning function data
-    'num_motion_dirs'       : 8,
-    'tuning_height'         : 4,        # magnitutde scaling factor for von Mises
-    'kappa'                 : 2,        # concentration scaling factor for von Mises
 
     # Cost parameters
     'spike_cost'            : 1e-6,
@@ -60,36 +55,13 @@ par = {
 
     # Training specs
     'batch_size'            : 1,
-    'num_iterations'        : 100000,
+    'num_iterations'        : 30000,
     'iters_between_outputs' : 100,
     'trials_per_sequence'   : 2,
+    'trials_per_grad_update': 20,
 
     # Task specs
-    'trial_type'            : 'DMS', # allowable types: DMS, DMRS45, DMRS90, DMRS180, DMC, DMS+DMRS, ABBA, ABCA, dualDMS
-    'rotation_match'        : 0,  # angular difference between matching sample and test
-    'dead_time'             : 200,
-    'fix_time'              : 200,
-    'sample_time'           : 400,
-    'delay_time'            : 100,
-    'test_time'             : 400,
-    'variable_delay_max'    : 300,
-    'mask_duration'         : 50,  # duration of traing mask after test onset
-    'catch_trial_pct'       : 0.0,
-    'num_receptive_fields'  : 1,
-    'num_rules'             : 1, # this will be two for the DMS+DMRS task
-
-    # Save paths
-    'save_fn'               : 'model_results.pkl',
-
-    # Analysis
-    'svm_normalize'         : True,
-    'decoding_reps'         : 100,
-    'simulation_reps'       : 100,
-    'decode_test'           : False,
-    'decode_rule'           : True,
-    'decode_sample_vs_test' : False,
-    'suppress_analysis'     : False,
-    'analyze_tuning'        : False,
+    'trial_type'            : 'task1', # allowable types: DMS, DMRS45, DMRS90, DMRS180, DMC, DMS+DMRS, ABBA, ABCA, dualDMS
 
 }
 
@@ -117,81 +89,15 @@ def update_trial_params():
     Update all the trial parameters given trial_type
     """
 
-    par['num_rules'] = 1
-    par['num_rule_tuned'] = 0
-    par['ABBA_delay' ] = 0
-
-    if par['trial_type'] == 'DMS' or par['trial_type'] == 'DMC':
-        par['rotation_match'] = 0
-
-    elif par['trial_type'] == 'DMRS45':
-        par['rotation_match'] = 45
-
-    elif par['trial_type'] == 'DMRS90':
-        par['rotation_match'] = 90
-
-    elif par['trial_type'] == 'DMRS90ccw':
-        par['rotation_match'] = -90
-
-    elif  par['trial_type'] == 'DMRS180':
-        par['rotation_match'] = 180
-
-    elif par['trial_type'] == 'dualDMS':
-        par['catch_trial_pct'] = 0
-        par['num_receptive_fields'] = 2
-        par['num_rules'] = 2
-        par['probe_trial_pct'] = 0
-        par['probe_time'] = 10
-        par['num_rule_tuned'] = 12
-        par['sample_time'] = 500
-        par['test_time'] = 500
-        par['delay_time'] = 1000
-        par['analyze_rule'] = True
-        par['num_motion_tuned'] = 36
-        par['noise_in_sd']  = 0.1
-        par['noise_rnn_sd'] = 0.5
-        par['num_iterations'] = 4000
-
-        par['dualDMS_single_test'] = False
-
-    elif par['trial_type'] == 'ABBA' or par['trial_type'] == 'ABCA':
-        par['catch_trial_pct'] = 0
-        par['match_test_prob'] = 0.5
-        par['max_num_tests'] = 3
-        par['sample_time'] = 400
-        par['delay_time'] = 2400
-        par['ABBA_delay'] = par['delay_time']//par['max_num_tests']//2
-        par['repeat_pct'] = 0
-        par['analyze_test'] = True
-        if par['trial_type'] == 'ABBA':
-            par['repeat_pct'] = 0.5
-
-    elif par['trial_type'] == 'DMS+DMRS' or par['trial_type'] == 'DMS+DMRS_early_cue':
-
-        par['num_rules'] = 2
-        par['num_rule_tuned'] = 12
-        if par['trial_type'] == 'DMS+DMRS':
-            par['rotation_match'] = [0, 90]
-            par['rule_onset_time'] = par['dead_time']+par['fix_time']+par['sample_time'] + 500
-            par['rule_offset_time'] = par['dead_time']+par['fix_time']+par['sample_time'] + 750
-        else:
-            par['rotation_match'] = [0, 45]
-            par['rule_onset_time'] = par['dead_time']
-            par['rule_offset_time'] = par['dead_time']+par['fix_time']+par['sample_time']+par['delay_time']-200
-
-    elif par['trial_type'] == 'DMS+DMC':
-        par['num_rules'] = 2
-        par['num_rule_tuned'] = 12
-        par['rotation_match'] = [0, 0]
-        par['rule_onset_time'] = 0
-        par['rule_offset_time'] = par['dead_time']+par['fix_time']+par['sample_time'] + par['delay_time'] + par['test_time']
-
-    elif par['trial_type'] == 'DMS+DMRS+DMC':
-        par['num_rules'] = 3
-        par['num_rule_tuned'] = 18
-        par['rotation_match'] = [0, 90, 0]
-        par['rule_onset_time'] = par['dead_time']
-        par['rule_offset_time'] = par['dead_time']+par['fix_time']+par['sample_time'] + par['delay_time'] + par['test_time']
+    if par['trial_type'] == 'task1':
+        par['ITI'] = 200
+        par['fix'] = 100
+        par['stim'] = 100
+        par['delay'] = 0
+        par['resp'] = 200
+        par['trial_length'] = par['ITI'] + par['fix'] + par['stim'] + par['delay'] + par['resp']
+        par['n_time_steps'] = par['trial_length']//par['dt']
+        par['sequence_time_steps'] = par['n_time_steps']*par['trials_per_sequence']
 
     else:
         print(par['trial_type'], ' not a recognized trial type')
@@ -221,11 +127,6 @@ def update_dependencies():
     par['EI_list'] = np.ones(par['n_hidden'], dtype=np.float32)
     par['EI_list'][-par['num_inh_units']:] = -1.
 
-    par['drop_mask'] = np.ones((par['n_hidden'],par['n_hidden']), dtype=np.float32)
-    ind_inh = np.where(par['EI_list']==-1)[0]
-    par['drop_mask'][:, ind_inh] = 0.
-    par['drop_mask'][ind_inh, :] = 0.
-
     par['EI_matrix'] = np.diag(par['EI_list'])
 
     # Membrane time constant of RNN neurons
@@ -235,16 +136,8 @@ def update_dependencies():
     par['noise_rnn'] = np.sqrt(2*par['alpha'])*par['noise_rnn_sd']
     par['noise_in'] = np.sqrt(2/par['alpha'])*par['noise_in_sd'] # since term will be multiplied by par['alpha']
 
-
     # The time step in seconds
     par['dt_sec'] = par['dt']/1000
-    # Length of each trial in ms
-    if par['trial_type'] == 'dualDMS' and not par['dualDMS_single_test']:
-        par['trial_length'] = par['dead_time']+par['fix_time']+par['sample_time']+2*par['delay_time']+2*par['test_time']
-    else:
-        par['trial_length'] = par['dead_time']+par['fix_time']+par['sample_time']+par['delay_time']+par['test_time']
-    # Length of each trial in time steps
-    par['n_time_steps'] = par['trial_length']//par['dt']
 
 
     ####################################################################
@@ -254,7 +147,7 @@ def update_dependencies():
     par['h_init'] = 0.1*np.ones((par['n_hidden'], par['batch_size']), dtype=np.float32)
 
     # Initialize input weights
-    c = 0.02
+    c = 0.05
     if par['include_ff_layer']:
         par['W_in0_init'] =  c*np.float32(np.random.gamma(shape=0.25, scale=1.0, size = [par['n_input'][1], par['n_input'][0]]))
         par['b_in0_init'] = np.zeros((par['n_input'][1], 1), dtype = np.float32)
@@ -295,8 +188,6 @@ def update_dependencies():
         par['bf_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
         par['bi_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
         par['bo_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
-
-
 
 
     """
@@ -343,12 +234,6 @@ def update_dependencies():
             par['U'][i,0] = 0.45
             par['syn_x_init'][i,:] = 1
             par['syn_u_init'][i,:] = par['U'][i,0]
-
-def initialize(dims, connection_prob):
-    w = np.random.gamma(shape=0.25, scale=1.0, size=dims)
-    #w = np.random.uniform(0,0.25, size=dims)
-    w *= (np.random.rand(*dims) < connection_prob)
-    return np.float32(w)
 
 
 def spectral_radius(A):
