@@ -136,6 +136,7 @@ class Model:
     def optimize(self):
 
         epsilon = 1e-7
+        var_list = [var for var in tf.trainable_variables()]
         #Z = tf.reduce_sum(tf.stack([tf.reduce_sum(time_mask*mask) for (mask, time_mask) in zip(self.mask, self.time_mask)]))
 
         self.pol_loss = -tf.reduce_sum(tf.stack([advantage*time_mask*mask*tf.reduce_sum(act*tf.log((epsilon + pol_out)), axis = 0) \
@@ -154,14 +155,28 @@ class Model:
         adam_opt = tf.train.AdamOptimizer(learning_rate = par['learning_rate'])
 
         """
-        Apply any applicable weights masks to the gradient and clip
+        Calculate gradients and add accumulate
         """
-        grads_and_vars_pol = adam_opt.compute_gradients(self.pol_loss + self.val_loss + self.spike_loss - self.entropy_loss)
-        capped_gvs = []
-        for grad, var in grads_and_vars_pol:
+        self.cummulative_grads = {}
+        update_gradients = []
+        reset_gradients = []
+        for var in var_list:
+            self.cummulative_grads[var.op.name] = tf.Variable(tf.zeros(var.get_shape()), trainable=False)
+        grads_and_vars = adam_opt.compute_gradients(self.pol_loss + self.val_loss + self.spike_loss - self.entropy_loss)
+        for grad, var in grads_and_vars:
             if var.name == "recurrent_pol/W_rnn:0":
                 grad *= par['w_rnn_mask']
-            capped_gvs.append((tf.clip_by_norm(grad, par['clip_max_grad_val']), var))
+            update_gradients.append(tf.assign_add(self.cummulative_grads[var.op.name], grad))
+            reset_gradients.append(tf.assign(self.cummulative_grads[var.op.name], 0.*self.cummulative_grads[var.op.name]))
+        self.update_gradients = tf.group(*update_gradients)
+        self.reset_gradients = tf.group(*reset_gradients)
+
+        """
+        Apply gradients
+        """
+        capped_gvs = []
+        for var in var_list:
+            capped_gvs.append((tf.clip_by_norm(self.cummulative_grads[var.op.name], par['clip_max_grad_val']), var))
         self.train_opt = adam_opt.apply_gradients(capped_gvs)
 
 
@@ -296,11 +311,18 @@ def main(gpu_id = None):
             val_out, reward, adv, act, prediected_val, stacked_mask = stack_vars(pol_out_list, val_out_list, reward_list, action_list, mask_list, trial_mask)
 
             """
-            Calculate and apply the gradients
+            Calculate and accumulate gradients
             """
-            _, pol_loss, val_loss, entropy_loss = sess.run([model.train_opt, model.pol_loss, model.val_loss, model.entropy_loss], \
+            _, pol_loss, val_loss, entropy_loss = sess.run([model.update_gradients, model.pol_loss, model.val_loss, model.entropy_loss], \
                 {x: input_data, target: reward_data, mask: trial_mask, pred_val: prediected_val, \
                 actual_action: act, advantage:adv, new_trial: new_trial_signal, h_init: hidden_init})
+
+            """
+            Apply the accumulated gradients and reset
+            """
+            if i>0 and i%100==0:
+                sess.run([model.train_opt])
+                sess.run([model.reset_gradients])
 
             hidden_init = np.array(h_list[-1])
 
