@@ -12,7 +12,7 @@ print('TensorFlow version:\t', tf.__version__)
 print('Using EI Network:\t', par['EI'])
 print('Synaptic configuration:\t', par['synapse_config'], "\n")
 
-# cell state placeholder for vanilla RNN num_inh_units
+# cell state placeholder for vanilla RNN
 invalid_c_val = 0
 
 """
@@ -189,7 +189,7 @@ class Model:
             # input gate: it = sigmoid(Wi*[h(t-1), xt] + bi)
             i = tf.sigmoid(tf.matmul(self.Wi, x) + tf.matmul(self.Ui, h) + self.bi)
             # updated cell state
-            cn = tf.tanh(tf.matmul(self.Wi, x) + tf.matmul(self.Uc, x) + self.bc))
+            cn = tf.tanh(tf.matmul(self.Wi, x) + tf.matmul(self.Uc, x) + self.bc)
             c = tf.matmul(f, c) + tf.matmul(i, cn)
             # output gate: it = sigmoid(Wo*[h(t-1), xt] + bo)
             o = tf.sigmoid(tf.matmul(self.Wo, x) + tf.matmul(self.Uo, h) + self.bo)
@@ -257,7 +257,7 @@ class Model:
                 self.Uf = tf.get_variable('Uf')
                 self.Ui = tf.get_variable('Ui')
                 self.Uo = tf.get_variable('Uo')
-                self.Wc = tf.get_variable('Wc
+                self.Wc = tf.get_variable('Wc')
 
                 self.bf = tf.get_variable('bf')
                 self.bi = tf.get_variable('bi')
