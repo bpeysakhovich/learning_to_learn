@@ -12,12 +12,15 @@ print('TensorFlow version:\t', tf.__version__)
 print('Using EI Network:\t', par['EI'])
 print('Synaptic configuration:\t', par['synapse_config'], "\n")
 
+# cell state placeholder for vanilla RNN num_inh_units
+invalid_c_val = 0
+
 """
 Model setup and execution
 """
 class Model:
 
-    def __init__(self, input_data, target_data, pred_val, actual_action, advantage, mask, new_trial, h_init):
+    def __init__(self, input_data, target_data, pred_val, actual_action, advantage, mask, new_trial, h_init, c_init):
 
         # Load the input activity, the target data, and the training mask for this batch of trials
         self.input_data = tf.unstack(input_data, axis=0)
@@ -32,19 +35,21 @@ class Model:
 
         # Load the initial hidden state activity to be used at the start of each trial
         self.h_init = h_init
+        self.c_init = c_init
 
         # Build the TensorFlow graph
-        self.rnn_cell_loop(self.h_init)
+        self.rnn_cell_loop(self.h_init, self.c_init)
 
         # Train the model
         self.optimize()
 
 
-    def rnn_cell_loop(self, h):
+    def rnn_cell_loop(self, h, c):
 
 
         self.W_ei = tf.constant(par['EI_matrix'])
         self.h = [] # RNN activity
+        self.c = [] # RNN activity
         self.pol_out = [] # policy output
         self.val_out = [] # value output
         self.syn_x = [] # STP available neurotransmitter, currently not in use
@@ -74,10 +79,11 @@ class Model:
             x = apply_convolutional_layers(rnn_input, par['conv_weight_fn'])
             self.conv_output = tf.transpose(x)
 
-            h, action, pol_out, val_out, mask, reward  = self.rnn_cell(self.conv_output, h, self.action[-1], self.reward[-1], \
+            h, c, action, pol_out, val_out, mask, reward  = self.rnn_cell(self.conv_output, h, c, self.action[-1], self.reward[-1], \
                 self.mask[-1], target, time_mask, new_trial)
 
             self.h.append(h)
+            self.c.append(c)
             self.action.append(tf.transpose(action))
             self.pol_out.append(pol_out)
             self.val_out.append(val_out)
@@ -90,7 +96,7 @@ class Model:
         self.action = self.action[1:]
 
 
-    def rnn_cell(self, x, h, prev_action, prev_reward, mask, target, time_mask, new_trial):
+    def rnn_cell(self, x, h, c, prev_action, prev_reward, mask, target, time_mask, new_trial):
 
         self.define_vars(reuse = True)
 
@@ -102,7 +108,7 @@ class Model:
         if par['include_ff_layer']:
             x = tf.nn.relu(tf.matmul(self.W_in0, x) + self.b_in0)
 
-        h = self.recurrent_cell(h, x, prev_action, prev_reward, mask)
+        [h, c] = self.recurrent_cell(h, c, x, prev_action, prev_reward, mask)
 
         # calculate the policy output and choose an action
         pol_out = tf.matmul(self.W_pol_out, h) + self.b_pol_out
@@ -121,7 +127,7 @@ class Model:
 
         reward = tf.reduce_sum(action*target, axis = 1)*mask*time_mask
 
-        return h, action, pol_out, val_out, mask, reward
+        return h, c, action, pol_out, val_out, mask, reward
 
 
     def optimize(self):
@@ -175,16 +181,29 @@ class Model:
         self.train_opt = adam_opt.apply_gradients(capped_gvs)
 
 
-    def recurrent_cell(self, h, x, prev_action, prev_reward, mask):
+    def recurrent_cell(self, h, c, x, prev_action, prev_reward, mask):
 
         if par['LSTM']:
-            pass
+            # forgetting gate
+            f = tf.sigmoid(tf.matmul(self.Wf, x) + tf.matmul(self.Uf, h) + self.bf)
+            # input gate: it = sigmoid(Wi*[h(t-1), xt] + bi)
+            i = tf.sigmoid(tf.matmul(self.Wi, x) + tf.matmul(self.Ui, h) + self.bi)
+            # updated cell state
+            cn = tf.tanh(tf.matmul(self.Wi, x) + tf.matmul(self.Uc, x) + self.bc))
+            c = tf.matmul(f, c) + tf.matmul(i, cn)
+            # output gate: it = sigmoid(Wo*[h(t-1), xt] + bo)
+            o = tf.sigmoid(tf.matmul(self.Wo, x) + tf.matmul(self.Uo, h) + self.bo)
+
+            h = tf.matmul(o, tf.tanh(c))
+
         else:
             h = tf.nn.relu(h*(1-par['alpha']) + par['alpha']*(tf.matmul(self.W_in1, x) + tf.matmul(self.W_rnn, h) \
                 + mask*(tf.matmul(self.W_reward_pos, tf.nn.relu(prev_reward)) + tf.matmul(self.W_reward_neg, tf.nn.relu(-prev_reward)) \
                 + tf.matmul(self.W_action, prev_action)) + self.b_rnn + tf.random_normal([par['n_hidden'], par['batch_size']], 0, par['noise_rnn'], dtype=tf.float32)))
 
-        return h
+            c = invalid_c_val
+
+        return h, c
 
 
     def define_vars(self, reuse):
@@ -233,22 +252,33 @@ class Model:
                 self.Wf = tf.get_variable('Wf')
                 self.Wi = tf.get_variable('Wi')
                 self.Wo = tf.get_variable('Wo')
+                self.Wc = tf.get_variable('Wc')
+
                 self.Uf = tf.get_variable('Uf')
                 self.Ui = tf.get_variable('Ui')
                 self.Uo = tf.get_variable('Uo')
+                self.Wc = tf.get_variable('Wc
+
                 self.bf = tf.get_variable('bf')
                 self.bi = tf.get_variable('bi')
                 self.bo = tf.get_variable('bo')
+                self.bc = tf.get_variable('bc')
+
             else:
                 self.Wf = tf.get_variable('Wf', initializer = par['Wf_init'])
                 self.Wi = tf.get_variable('Wi', initializer = par['Wi_init'])
                 self.Wo = tf.get_variable('Wo', initializer = par['Wo_init'])
-                self.Wf = tf.get_variable('Uf', initializer = par['Uf_init'])
-                self.Wi = tf.get_variable('Ui', initializer = par['Ui_init'])
-                self.Wo = tf.get_variable('Uo', initializer = par['Uo_init'])
-                self.Wf = tf.get_variable('bf', initializer = par['bf_init'])
-                self.Wi = tf.get_variable('bi', initializer = par['bi_init'])
-                self.Wo = tf.get_variable('bo', initializer = par['bo_init'])
+                self.Wo = tf.get_variable('Wo', initializer = par['Wc_init'])
+
+                self.Uf = tf.get_variable('Uf', initializer = par['Uf_init'])
+                self.Ui = tf.get_variable('Ui', initializer = par['Ui_init'])
+                self.Uo = tf.get_variable('Uo', initializer = par['Uo_init'])
+                self.Uc = tf.get_variable('Uo', initializer = par['Ub_init'])
+
+                self.bf = tf.get_variable('bf', initializer = par['bf_init'])
+                self.bi = tf.get_variable('bi', initializer = par['bi_init'])
+                self.bo = tf.get_variable('bo', initializer = par['bo_init'])
+                self.bc = tf.get_variable('Uo', initializer = par['bc_init'])
         else:
             if reuse:
                 with tf.variable_scope('recurrent_pol', reuse = True):
@@ -276,7 +306,7 @@ def main(gpu_id = None):
     """
     Define all placeholder
     """
-    x, target, mask, pred_val, actual_action, advantage, new_trial, h_init, mask = generate_placeholders()
+    x, target, mask, pred_val, actual_action, advantage, new_trial, h_init, c_init, mask = generate_placeholders()
 
     config = tf.ConfigProto()
     #config.gpu_options.allow_growth=True
@@ -285,7 +315,7 @@ def main(gpu_id = None):
 
         device = '/cpu:0' if gpu_id is None else '/gpu:0'
         with tf.device(device):
-            model = Model(x, target, pred_val, actual_action, advantage, mask, new_trial, h_init)
+            model = Model(x, target, pred_val, actual_action, advantage, mask, new_trial, h_init, c_init)
 
         sess.run(tf.global_variables_initializer())
 
@@ -304,7 +334,7 @@ def main(gpu_id = None):
             """
             Run the model
             """
-            pol_out_list, val_out_list, h_list, action_list, mask_list, reward_list = sess.run([model.pol_out, model.val_out, model.h, model.action, \
+            pol_out_list, val_out_list, h_list, c_list, action_list, mask_list, reward_list = sess.run([model.pol_out, model.val_out, model.h, model.c, model.action, \
                  model.mask, model.reward], {x: input_data, target: reward_data, mask: trial_mask, new_trial: new_trial_signal, h_init:hidden_init})
 
             """
@@ -317,7 +347,7 @@ def main(gpu_id = None):
             """
             _, pol_loss, val_loss, entropy_loss = sess.run([model.update_gradients, model.pol_loss, model.val_loss, model.entropy_loss], \
                 {x: input_data, target: reward_data, mask: trial_mask, pred_val: prediected_val, \
-                actual_action: act, advantage:adv, new_trial: new_trial_signal, h_init: hidden_init})
+                actual_action: act, advantage:adv, new_trial: new_trial_signal, h_init: hidden_init, c_init: cell_state_init})
 
             """
             cg = sess.run([model.cummulative_grads])
@@ -335,6 +365,7 @@ def main(gpu_id = None):
                 sess.run([model.reset_gradients])
 
             hidden_init = np.array(h_list[-1])
+            cell_state_init = np.array(c_list[-1])
 
             """
             Append model results an dprint results
@@ -382,8 +413,9 @@ def generate_placeholders():
     advantage  = tf.placeholder(tf.float32, shape=[par['sequence_time_steps'], par['n_val'], par['batch_size']])
     new_trial  = tf.placeholder(tf.float32, shape=[par['sequence_time_steps']])
     h_init =  tf.placeholder(tf.float32, shape=[par['n_hidden'],par['batch_size']])
+    c_init =  tf.placeholder(tf.float32, shape=[par['n_hidden'],par['batch_size']])
 
-    return x, target, mask, pred_val, actual_action, advantage, new_trial, h_init, mask
+    return x, target, mask, pred_val, actual_action, advantage, new_trial, h_init, c_init, mask
 
 def eval_weights():
 

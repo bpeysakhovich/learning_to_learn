@@ -18,7 +18,7 @@ par = {
     'synapse_config'        : None, # Full is 'std_stf'
     'exc_inh_prop'          : 0.8,       # Literature 0.8, for EI off 1
     'var_delay'             : False,
-    'LSTM'                  : False,
+    'LSTM'                  : True,
 
     # Network shape
     'n_input'               : [2048, 1000],
@@ -151,6 +151,7 @@ def update_dependencies():
     ####################################################################
 
     par['h_init'] = 0.1*np.ones((par['n_hidden'], par['batch_size']), dtype=np.float32)
+    par['c_init'] = 0.1*np.ones((par['n_hidden'], par['batch_size']), dtype=np.float32) # cell state (only used for LSTM units)
 
     # Initialize input weights
     c = 0.05
@@ -188,12 +189,17 @@ def update_dependencies():
         par['Wf_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
         par['Wi_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
         par['Wo_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+        par['Wc_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+
         par['Uf_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
         par['Uf_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
         par['Uf_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+        par['Uc_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+
         par['bf_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
         par['bi_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
         par['bo_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
+        par['bc_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
 
 
     """
