@@ -273,7 +273,7 @@ class Model:
             # Weights for vanilla RNN
             self.W_in1 = tf.get_variable('W_in1', initializer = par['W_in1_init'])
             self.b_rnn = tf.get_variable('b_rnn', initializer = par['b_rnn_init'])
-            self.W_rnn = tf.get_variable('W_rnn', initializer = par['W_rnn'])
+            self.W_rnn = tf.get_variable('W_rnn', initializer = par['W_rnn_pol_init'])
             self.W_reward_pos = tf.get_variable('W_reward_pos', initializer = par['W_reward_pos_init'])
             self.W_reward_neg = tf.get_variable('W_reward_neg', initializer = par['W_reward_neg_init'])
             self.W_action = tf.get_variable('W_action', initializer = par['W_action_init'])

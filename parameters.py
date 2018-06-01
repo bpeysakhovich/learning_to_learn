@@ -18,7 +18,7 @@ par = {
     'synapse_config'        : None, # Full is 'std_stf'
     'exc_inh_prop'          : 0.8,       # Literature 0.8, for EI off 1
     'var_delay'             : False,
-    'LSTM'                  : True,
+    'LSTM'                  : False,
 
     # Network shape
     'n_input'               : [2048, 1000],
