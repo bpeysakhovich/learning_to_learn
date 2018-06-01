@@ -11,7 +11,7 @@ class Stimulus:
         # we will train the convolutional layers using the training images
         # we will use the train images fro the learning to learn experiments
         self.imagenet_dir = '/home/masse/Context-Dependent-Gating/ImageNet/'
-        self.cifar_dir = '/home/masse/Context-Dependent-Gating/cifar/cifar-100-python/'
+        self.cifar_dir = '/home/bpeysakhovich/Documents/rnn_modeling/learning_to_learn/cifar/cifar-100-python/'
         self.load_cifar_data()
 
         # for the simple image/saccade task (task 1), select 50 pairs of images

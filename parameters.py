@@ -11,7 +11,7 @@ Independent parameters
 par = {
     # Setup parameters
     'save_dir'              : './savedir/',
-    'conv_weight_fn'        : '/home/masse/Context-Dependent-Gating/savedir/conv_weights_test.pkl',
+    'conv_weight_fn'        : '/home/bpeysakhovich/Documents/rnn_modeling/learning_to_learn/conv_weights.pkl',
     'analyze_model'         : True,
 
     # Network configuration
@@ -67,7 +67,7 @@ par = {
     'conv_filters'          : [16,16,32,32],
     'kernel_size'           : [3, 3],
     'pool_size'             : [2,2],
-    'strides'               : 1,
+    'stride'               : 1,
 
 }
 
@@ -174,32 +174,51 @@ def update_dependencies():
         par['W_rnn_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
         par['w_rnn_mask'] = np.ones((par['n_hidden'], par['n_hidden']), dtype=np.float32)
 
-
-    par['W_reward_pos_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
-    par['W_reward_neg_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
-    par['W_action_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_pol']]))
     par['W_pol_out_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_pol'], par['n_hidden']]))
     par['W_val_out_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_val'], par['n_hidden']]))
 
-    par['b_rnn_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
     par['b_pol_out_init'] = np.zeros((par['n_pol'], 1), dtype = np.float32)
     par['b_val_out_init'] = np.zeros((par['n_val'], 1), dtype = np.float32)
 
+
     if par['LSTM']:
-        par['Wf_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
-        par['Wi_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
-        par['Wo_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
-        par['Wc_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+        par['Wf_init'] =  c*np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_input'][0]]))
+        par['Wi_init'] =  c*np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_input'][0]]))
+        par['Wo_init'] =  c*np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_input'][0]]))
+        par['Wc_init'] =  c*np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_input'][0]]))
 
         par['Uf_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
-        par['Uf_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
-        par['Uf_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+        par['Ui_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+        par['Uo_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
         par['Uc_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_hidden']]))
+
+        par['Wf_reward_pos_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
+        par['Wi_reward_pos_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
+        par['Wo_reward_pos_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
+        par['Wc_reward_pos_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
+
+        par['Wf_reward_neg_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
+        par['Wi_reward_neg_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
+        par['Wo_reward_neg_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
+        par['Wc_reward_neg_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
+
+        par['Wf_action_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_pol']]))
+        par['Wi_action_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_pol']]))
+        par['Wo_action_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_pol']]))
+        par['Wc_action_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_pol']]))
 
         par['bf_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
         par['bi_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
         par['bo_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
         par['bc_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
+
+
+    else:
+        par['W_reward_pos_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
+        par['W_reward_neg_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], 1]))
+        par['W_action_init'] =  np.float32(np.random.uniform(-c, c, size = [par['n_hidden'], par['n_pol']]))
+
+        par['b_rnn_init'] = np.zeros((par['n_hidden'], 1), dtype = np.float32)
 
 
     """

@@ -68,7 +68,7 @@ class Model:
         """
         Initialize weights and biases
         """
-        self.define_vars(reuse = False)
+        self.define_vars()
 
 
         """
@@ -98,11 +98,16 @@ class Model:
 
     def rnn_cell(self, x, h, c, prev_action, prev_reward, mask, target, time_mask, new_trial):
 
-        self.define_vars(reuse = True)
-
         # Modify the recurrent weights if using excitatory/inhibitory neurons
         if par['EI']:
-            self.W_rnn = tf.matmul(tf.nn.relu(self.W_rnn), self.W_ei)
+            if par['LSTM']:
+                self.Uf = tf.matmul(tf.nn.relu(self.Uf), self.W_ei)
+                self.Ui = tf.matmul(tf.nn.relu(self.Ui), self.W_ei)
+                self.Uo = tf.matmul(tf.nn.relu(self.Uo), self.W_ei)
+                self.Uc = tf.matmul(tf.nn.relu(self.Uc), self.W_ei)
+
+            else:
+                self.W_rnn = tf.matmul(tf.nn.relu(self.W_rnn), self.W_ei)
 
         # pass the output of the convolutional layers through the feedforward layer(s)
         if par['include_ff_layer']:
@@ -185,16 +190,20 @@ class Model:
 
         if par['LSTM']:
             # forgetting gate
-            f = tf.sigmoid(tf.matmul(self.Wf, x) + tf.matmul(self.Uf, h) + self.bf)
-            # input gate: it = sigmoid(Wi*[h(t-1), xt] + bi)
-            i = tf.sigmoid(tf.matmul(self.Wi, x) + tf.matmul(self.Ui, h) + self.bi)
+            f = tf.sigmoid(tf.matmul(self.Wf, x) + tf.matmul(self.Uf, h) + tf.matmul(self.Wf_reward_pos, tf.nn.relu(prev_reward)) \
+                + tf.matmul(self.Wf_reward_neg, tf.nn.relu(-prev_reward)) + mask*(tf.matmul(self.Wf_action, prev_action)) + self.bf)
+            # input gate
+            i = tf.sigmoid(tf.matmul(self.Wi, x) + tf.matmul(self.Ui, h) + tf.matmul(self.Wi_reward_pos, tf.nn.relu(prev_reward)) \
+                + tf.matmul(self.Wi_reward_neg, tf.nn.relu(-prev_reward)) + mask*(tf.matmul(self.Wi_action, prev_action)) + self.bi)
             # updated cell state
-            cn = tf.tanh(tf.matmul(self.Wi, x) + tf.matmul(self.Uc, x) + self.bc)
-            c = tf.matmul(f, c) + tf.matmul(i, cn)
-            # output gate: it = sigmoid(Wo*[h(t-1), xt] + bo)
-            o = tf.sigmoid(tf.matmul(self.Wo, x) + tf.matmul(self.Uo, h) + self.bo)
+            cn = tf.tanh(tf.matmul(self.Wc, x) + tf.matmul(self.Uc, h) + tf.matmul(self.Wc_reward_pos, tf.nn.relu(prev_reward)) \
+                + tf.matmul(self.Wc_reward_neg, tf.nn.relu(-prev_reward)) + mask*(tf.matmul(self.Wc_action, prev_action)) + self.bc)
+            c = tf.multiply(f, c) + tf.multiply(i, cn)
+            # output gate
+            o = tf.sigmoid(tf.matmul(self.Wo, x) + tf.matmul(self.Uo, h) + tf.matmul(self.Wo_reward_pos, tf.nn.relu(prev_reward)) \
+                + tf.matmul(self.Wo_reward_neg, tf.nn.relu(-prev_reward)) + mask*(tf.matmul(self.Wo_action, prev_action)) + self.bo)
 
-            h = tf.matmul(o, tf.tanh(c))
+            h = tf.multiply(o, tf.tanh(c))
 
         else:
             h = tf.nn.relu(h*(1-par['alpha']) + par['alpha']*(tf.matmul(self.W_in1, x) + tf.matmul(self.W_rnn, h) \
@@ -206,7 +215,7 @@ class Model:
         return h, c
 
 
-    def define_vars(self, reuse):
+    def define_vars(self):
 
         # in TF v1.8, I can use reuse = tf.AUTO_REUSE, and get rid of first weight initialization above
 
@@ -217,76 +226,57 @@ class Model:
         # W_pol_out projects from the RNN onto the policy output neurons
         # W_val_out projects from the RNN onto the value output neuron
 
-        if reuse:
-            with tf.variable_scope('recurrent_pol', reuse = True):
-                if par['include_ff_layer']:
-                    self.W_in0 = tf.get_variable('W_in0')
-                    self.b_in0 = tf.get_variable('b_in0')
-                self.W_in1 = tf.get_variable('W_in1')
-                self.W_reward_pos = tf.get_variable('W_reward_pos')
-                self.W_reward_neg = tf.get_variable('W_reward_neg')
-                self.b_rnn = tf.get_variable('b_rnn')
-                self.W_pol_out = tf.get_variable('W_pol_out')
-                self.b_pol_out = tf.get_variable('b_pol_out')
-                self.W_action = tf.get_variable('W_action')
-                self.W_val_out = tf.get_variable('W_val_out')
-                self.b_val_out = tf.get_variable('b_val_out')
-        else:
-            with tf.variable_scope('recurrent_pol'):
-                if par['include_ff_layer']:
-                    self.W_in0 = tf.get_variable('W_in0', initializer = par['W_in0_init'])
-                    self.b_in0 = tf.get_variable('b_in0', initializer = par['b_in0_init'])
-                self.W_in1 = tf.get_variable('W_in1', initializer = par['W_in1_init'])
-                self.b_rnn = tf.get_variable('b_rnn', initializer = par['b_rnn_init'])
-                self.W_reward_pos = tf.get_variable('W_reward_pos', initializer = par['W_reward_pos_init'])
-                self.W_reward_neg = tf.get_variable('W_reward_neg', initializer = par['W_reward_neg_init'])
-                self.W_pol_out = tf.get_variable('W_pol_out', initializer = par['W_pol_out_init'])
-                self.b_pol_out = tf.get_variable('b_pol_out', initializer = par['b_pol_out_init'])
-                self.W_action = tf.get_variable('W_action', initializer = par['W_action_init'])
-                self.W_val_out = tf.get_variable('W_val_out', initializer = par['W_val_out_init'])
-                self.b_val_out = tf.get_variable('b_val_out', initializer = par['b_val_out_init'])
+        with tf.variable_scope('recurrent_pol'):
+            if par['include_ff_layer']:
+                self.W_in0 = tf.get_variable('W_in0', initializer = par['W_in0_init'])
+                self.b_in0 = tf.get_variable('b_in0', initializer = par['b_in0_init'])
+
+            self.W_pol_out = tf.get_variable('W_pol_out', initializer = par['W_pol_out_init'])
+            self.b_pol_out = tf.get_variable('b_pol_out', initializer = par['b_pol_out_init'])
+
+            self.W_val_out = tf.get_variable('W_val_out', initializer = par['W_val_out_init'])
+            self.b_val_out = tf.get_variable('b_val_out', initializer = par['b_val_out_init'])
 
         if par['LSTM']:
             # following conventions on https://en.wikipedia.org/wiki/Long_short-term_memory
-            if reuse:
-                self.Wf = tf.get_variable('Wf')
-                self.Wi = tf.get_variable('Wi')
-                self.Wo = tf.get_variable('Wo')
-                self.Wc = tf.get_variable('Wc')
+            self.Wf = tf.get_variable('Wf', initializer = par['Wf_init'])
+            self.Wi = tf.get_variable('Wi', initializer = par['Wi_init'])
+            self.Wo = tf.get_variable('Wo', initializer = par['Wo_init'])
+            self.Wc = tf.get_variable('Wc', initializer = par['Wc_init'])
 
-                self.Uf = tf.get_variable('Uf')
-                self.Ui = tf.get_variable('Ui')
-                self.Uo = tf.get_variable('Uo')
-                self.Wc = tf.get_variable('Wc')
+            self.Uf = tf.get_variable('Uf', initializer = par['Uf_init'])
+            self.Ui = tf.get_variable('Ui', initializer = par['Ui_init'])
+            self.Uo = tf.get_variable('Uo', initializer = par['Uo_init'])
+            self.Uc = tf.get_variable('Uc', initializer = par['Uc_init'])
 
-                self.bf = tf.get_variable('bf')
-                self.bi = tf.get_variable('bi')
-                self.bo = tf.get_variable('bo')
-                self.bc = tf.get_variable('bc')
+            self.bf = tf.get_variable('bf', initializer = par['bf_init'])
+            self.bi = tf.get_variable('bi', initializer = par['bi_init'])
+            self.bo = tf.get_variable('bo', initializer = par['bo_init'])
+            self.bc = tf.get_variable('bc', initializer = par['bc_init'])
 
-            else:
-                self.Wf = tf.get_variable('Wf', initializer = par['Wf_init'])
-                self.Wi = tf.get_variable('Wi', initializer = par['Wi_init'])
-                self.Wo = tf.get_variable('Wo', initializer = par['Wo_init'])
-                self.Wo = tf.get_variable('Wo', initializer = par['Wc_init'])
+            self.Wf_reward_pos = tf.get_variable('Wf_reward_pos', initializer = par['Wf_reward_pos_init'])
+            self.Wi_reward_pos = tf.get_variable('Wi_reward_pos', initializer = par['Wi_reward_pos_init'])
+            self.Wo_reward_pos = tf.get_variable('Wo_reward_pos', initializer = par['Wo_reward_pos_init'])
+            self.Wc_reward_pos = tf.get_variable('Wc_reward_pos', initializer = par['Wc_reward_pos_init'])
 
-                self.Uf = tf.get_variable('Uf', initializer = par['Uf_init'])
-                self.Ui = tf.get_variable('Ui', initializer = par['Ui_init'])
-                self.Uo = tf.get_variable('Uo', initializer = par['Uo_init'])
-                self.Uc = tf.get_variable('Uo', initializer = par['Ub_init'])
+            self.Wf_reward_neg = tf.get_variable('Wf_reward_neg', initializer = par['Wf_reward_neg_init'])
+            self.Wi_reward_neg = tf.get_variable('Wi_reward_neg', initializer = par['Wi_reward_neg_init'])
+            self.Wo_reward_neg = tf.get_variable('Wo_reward_neg', initializer = par['Wo_reward_neg_init'])
+            self.Wc_reward_neg = tf.get_variable('Wc_reward_neg', initializer = par['Wc_reward_neg_init'])
 
-                self.bf = tf.get_variable('bf', initializer = par['bf_init'])
-                self.bi = tf.get_variable('bi', initializer = par['bi_init'])
-                self.bo = tf.get_variable('bo', initializer = par['bo_init'])
-                self.bc = tf.get_variable('Uo', initializer = par['bc_init'])
+            self.Wf_action = tf.get_variable('Wf_action', initializer = par['Wf_action_init'])
+            self.Wi_action = tf.get_variable('Wi_action', initializer = par['Wi_action_init'])
+            self.Wo_action = tf.get_variable('Wo_action', initializer = par['Wo_action_init'])
+            self.Wc_action = tf.get_variable('Wc_action', initializer = par['Wc_action_init'])
+
         else:
-            if reuse:
-                with tf.variable_scope('recurrent_pol', reuse = True):
-                    self.W_rnn = tf.get_variable('W_rnn')
-            else:
-                with tf.variable_scope('recurrent_pol'):
-                    self.W_rnn = tf.get_variable('W_rnn', initializer = par['W_rnn_pol_init'])
-
+            # Weights for vanilla RNN
+            self.W_in1 = tf.get_variable('W_in1', initializer = par['W_in1_init'])
+            self.b_rnn = tf.get_variable('b_rnn', initializer = par['b_rnn_init'])
+            self.W_rnn = tf.get_variable('W_rnn', initializer = par['W_rnn'])
+            self.W_reward_pos = tf.get_variable('W_reward_pos', initializer = par['W_reward_pos_init'])
+            self.W_reward_neg = tf.get_variable('W_reward_neg', initializer = par['W_reward_neg_init'])
+            self.W_action = tf.get_variable('W_action', initializer = par['W_action_init'])
 
 def main(gpu_id = None):
 
@@ -323,6 +313,7 @@ def main(gpu_id = None):
         model_performance = {'reward': [], 'entropy_loss': [], 'val_loss': [], 'pol_loss': [], 'spike_loss': [], 'trial': []}
 
         hidden_init = np.array(par['h_init'])
+        cell_state_init = np.array(par['c_init'])
 
         for i in range(par['num_iterations']):
 
@@ -334,19 +325,19 @@ def main(gpu_id = None):
             """
             Run the model
             """
-            pol_out_list, val_out_list, h_list, c_list, action_list, mask_list, reward_list = sess.run([model.pol_out, model.val_out, model.h, model.c, model.action, \
-                 model.mask, model.reward], {x: input_data, target: reward_data, mask: trial_mask, new_trial: new_trial_signal, h_init:hidden_init})
+            pol_out_list, val_out_list, h_list, action_list, mask_list, reward_list = sess.run([model.pol_out, model.val_out, model.h, model.action, \
+                 model.mask, model.reward], {x: input_data, target: reward_data, mask: trial_mask, new_trial: new_trial_signal, h_init:hidden_init, c_init:cell_state_init})
 
             """
             Unpack all lists, calculate predicted value and advantage functions
             """
-            val_out, reward, adv, act, prediected_val, stacked_mask = stack_vars(pol_out_list, val_out_list, reward_list, action_list, mask_list, trial_mask)
+            val_out, reward, adv, act, predicted_val, stacked_mask = stack_vars(pol_out_list, val_out_list, reward_list, action_list, mask_list, trial_mask)
 
             """
             Calculate and accumulate gradients
             """
             _, pol_loss, val_loss, entropy_loss = sess.run([model.update_gradients, model.pol_loss, model.val_loss, model.entropy_loss], \
-                {x: input_data, target: reward_data, mask: trial_mask, pred_val: prediected_val, \
+                {x: input_data, target: reward_data, mask: trial_mask, pred_val: predicted_val, \
                 actual_action: act, advantage:adv, new_trial: new_trial_signal, h_init: hidden_init, c_init: cell_state_init})
 
             """
@@ -365,7 +356,6 @@ def main(gpu_id = None):
                 sess.run([model.reset_gradients])
 
             hidden_init = np.array(h_list[-1])
-            cell_state_init = np.array(c_list[-1])
 
             """
             Append model results an dprint results
@@ -420,12 +410,12 @@ def generate_placeholders():
 def eval_weights():
 
     # TODO: NEEDS FIXING!
-    with tf.variable_scope('rnn_cell', reuse=True):
+    with tf.variable_scope('rnn_cell'):
         W_in = tf.get_variable('W_in')
         W_rnn = tf.get_variable('W_rnn')
         b_rnn = tf.get_variable('b_rnn')
 
-    with tf.variable_scope('output', reuse=True):
+    with tf.variable_scope('output'):
         W_out = tf.get_variable('W_out')
         b_out = tf.get_variable('b_out')
 
