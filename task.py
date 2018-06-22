@@ -37,8 +37,14 @@ class Stimulus:
         delay = par['delay']//par['dt']
         resp = par['resp']//par['dt']
 
-        for i, j in product(range(par['batch_size']), range(par['trials_per_sequence'])):
+        if switch_every_ep:
+            image_pairs = np.random.choice(len(self.test_labels), size = (par['batch_size'],2), replace = False)
+        else:
+            if switch or not image_pairs:
+                im_pair_indx = np.random.choice(len(self.test_labels), size = (1,2), replace = False)
+                image_pairs = np.repeat(im_pair_indx, par['batch_size'], axis=0)
 
+        for i, j in product(range(par['batch_size']), range(par['trials_per_sequence'])):
 
             start_time = j*par['n_time_steps']
             new_trial[start_time] = 1
@@ -59,7 +65,7 @@ class Stimulus:
 
         batch_data += np.random.normal(0, par['noise_in'], size = batch_data.shape)
 
-        return np.maximum(0, batch_data), rewards, trial_mask, new_trial
+        return np.maximum(0, batch_data), rewards, trial_mask, new_trial, image_pairs
 
 
     def load_imagenet_data(self):

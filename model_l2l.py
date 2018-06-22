@@ -315,12 +315,19 @@ def main(gpu_id = None):
         hidden_init = np.array(par['h_init'])
         cell_state_init = np.array(par['c_init'])
 
+        # initialize image_pairs array
+        image_pairs = None
+
         for i in range(par['num_iterations']):
 
             """
             Generate stimulus and response contigencies
             """
-            input_data, reward_data, trial_mask, new_trial_signal = stim.generate_batch_task1(0)
+            switch = False
+            if i%par['iters_before_im_switch'] == 0:input_data, reward_data, trial_mask, new_trial_signal, image_pairs = stim.generate_batch(par['switch_every_ep'], image_pairs, switch, task = 1)
+                switch = True
+
+            input_data, reward_data, trial_mask, new_trial_signal, image_pairs = stim.generate_batch_task1(par['switch_every_ep'], image_pairs, switch)
 
             """
             Run the model

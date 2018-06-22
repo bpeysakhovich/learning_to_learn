@@ -61,7 +61,9 @@ par = {
     'trials_per_grad_update': 20,
 
     # Task specs
-    'trial_type'            : 'task1', # allowable types: DMS, DMRS45, DMRS90, DMRS180, DMC, DMS+DMRS, ABBA, ABCA, dualDMS
+    'trial_type'            : 'task1',
+    'switch_every_ep'       : True,
+    'iters_before_im_switch': 1,
 
     # Parameters for convolutional layer
     'conv_filters'          : [16,16,32,32],
